@@ -1,52 +1,69 @@
 package com.lymph.ui
 
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.*
 import androidx.compose.ui.unit.dp
 import com.lymph.data.database.LymphDatabase
 import com.lymph.data.export.DataExporter
 import com.lymph.ui.screen.DashboardScreen
 import com.lymph.ui.theme.LymphTheme
 import com.lymph.ui.viewmodel.BiometricViewModel
-import kotlinx.coroutines.CoroutineScope
+
+/** Initialization state for the database-backed app. */
+private enum class InitState { LOADING, READY, ERROR }
 
 /**
  * Root Composable for Lymph.
  *
- * Detects screen width via [BoxWithConstraints] and switches between:
- * - MOBILE  (<= 840dp): single-column dashboard with FAB + sandwich menu
- * - EXPANDED (> 840dp): master-detail layout with side-by-side panels
+ * Opens the database asynchronously (required for web to load sql.js from CDN),
+ * then creates the ViewModel and renders the dashboard.
  */
 @Composable
 fun LymphApp(
     database: LymphDatabase,
     exporter: DataExporter
 ) {
-    LymphTheme {
-        val vm = BiometricViewModel(
-            weightDao = database.weightDao(),
-            periodDao = database.periodDao(),
-            bowelDao = database.bowelDao(),
-            database = database
-        )
+    var initState by remember { mutableStateOf<InitState>(InitState.LOADING) }
+    var viewModel by remember { mutableStateOf<BiometricViewModel?>(null) }
 
-        // Start observing flows. On native this is a no-op (already started in init).
-        // On WASM this starts collecting from the in-memory flows.
-        val scope = rememberCoroutineScope()
-        LaunchedEffect(Unit) {
-            vm.startObserving(scope)
-        }
-
-        BoxWithConstraints {
-            val isExpanded = maxWidth > 840.dp
-
-            DashboardScreen(
-                viewModel = vm,
-                exporter = exporter,
-                isExpanded = isExpanded
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) {
+        try {
+            database.open()
+            viewModel = BiometricViewModel(
+                weightDao = database.weightDao(),
+                periodDao = database.periodDao(),
+                bowelDao = database.bowelDao(),
+                database = database
             )
+            initState = InitState.READY
+        } catch (e: Exception) {
+            e.printStackTrace()
+            initState = InitState.ERROR
+        }
+    }
+
+    LymphTheme {
+        when (initState) {
+            InitState.LOADING -> {} // TODO: Show loading indicator
+            InitState.ERROR   -> {} // TODO: Show error screen
+            InitState.READY  -> {
+                val vm = viewModel!!
+                val scope2 = rememberCoroutineScope()
+
+                LaunchedEffect(vm) {
+                    vm.startObserving(scope2)
+                }
+
+                BoxWithConstraints {
+                    val isExpanded = maxWidth > 840.dp
+                    DashboardScreen(
+                        viewModel = vm,
+                        exporter = exporter,
+                        isExpanded = isExpanded
+                    )
+                }
+            }
         }
     }
 }

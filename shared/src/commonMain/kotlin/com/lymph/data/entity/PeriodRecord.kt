@@ -2,21 +2,14 @@ package com.lymph.data.entity
 
 import com.lymph.data.BiometricRecord
 
-/**
- * Interface for menstrual period record.
- * Implemented by platform-specific data classes.
- */
-interface PeriodRecord : BiometricRecord {
-    val durationDays: Int
-    val flowIntensity: Int
-    val symptoms: String?
-}
-
-/** Factory function for creating PeriodRecord instances. */
-expect fun createPeriodRecord(
-    id: String,
-    timestamp: Long,
-    durationDays: Int,
-    flowIntensity: Int,
-    symptoms: String?
-): PeriodRecord
+/** Menstrual period record. */
+data class PeriodRecord(
+    override val id: String,
+    override val timestamp: Long,
+    /** Duration of the period in days. */
+    val durationDays: Int,
+    /** Flow intensity: 1=light, 2=medium, 3=heavy, 4=flooding. */
+    val flowIntensity: Int = 2,
+    /** Optional symptom tags (comma-separated). */
+    val symptoms: String? = null
+) : BiometricRecord

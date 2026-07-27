@@ -10,9 +10,6 @@ import androidx.compose.ui.window.Dialog
 import com.lymph.data.entity.BowelRecord
 import com.lymph.data.entity.PeriodRecord
 import com.lymph.data.entity.WeightRecord
-import com.lymph.data.entity.createBowelRecord
-import com.lymph.data.entity.createPeriodRecord
-import com.lymph.data.entity.createWeightRecord
 import com.lymph.ui.viewmodel.BiometricViewModel
 import com.lymph.util.Uuid
 import kotlinx.datetime.Clock
@@ -92,13 +89,13 @@ private fun WeightForm(vm: BiometricViewModel, onDismiss: () -> Unit) {
         Button(
             onClick = {
                 vm.insertWeight(
-                                    createWeightRecord(
-                                        id = Uuid.randomV4(),
-                                        timestamp = Clock.System.now().toEpochMilliseconds(),
-                                        weightKg = weight,
-                                        note = note.ifEmpty { null }
-                                    )
-                                )
+                    WeightRecord(
+                        id = Uuid.randomV4(),
+                        timestamp = Clock.System.now().toEpochMilliseconds(),
+                        weightKg = weight,
+                        note = note.ifEmpty { null }
+                    )
+                )
                 onDismiss()
             },
             modifier = Modifier.align(Alignment.End),
@@ -142,14 +139,14 @@ private fun PeriodForm(vm: BiometricViewModel, onDismiss: () -> Unit) {
         Button(
             onClick = {
                 vm.insertPeriod(
-                                    createPeriodRecord(
-                                        id = Uuid.randomV4(),
-                                        timestamp = Clock.System.now().toEpochMilliseconds(),
-                                        durationDays = duration,
-                                        flowIntensity = flow,
-                                        symptoms = symptoms.ifEmpty { null }
-                                    )
-                                )
+                    PeriodRecord(
+                        id = Uuid.randomV4(),
+                        timestamp = Clock.System.now().toEpochMilliseconds(),
+                        durationDays = duration,
+                        flowIntensity = flow,
+                        symptoms = symptoms.ifEmpty { null }
+                    )
+                )
                 onDismiss()
             },
             modifier = Modifier.align(Alignment.End),
@@ -193,14 +190,14 @@ private fun BowelForm(vm: BiometricViewModel, onDismiss: () -> Unit) {
         Button(
             onClick = {
                 vm.insertBowel(
-                                    createBowelRecord(
-                                        id = Uuid.randomV4(),
-                                        timestamp = Clock.System.now().toEpochMilliseconds(),
-                                        bristolType = bristol,
-                                        effortLevel = effort,
-                                        note = note.ifEmpty { null }
-                                    )
-                                )
+                    BowelRecord(
+                        id = Uuid.randomV4(),
+                        timestamp = Clock.System.now().toEpochMilliseconds(),
+                        bristolType = bristol,
+                        effortLevel = effort,
+                        note = note.ifEmpty { null }
+                    )
+                )
                 onDismiss()
             },
             modifier = Modifier.align(Alignment.End),

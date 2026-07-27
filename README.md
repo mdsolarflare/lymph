@@ -189,7 +189,7 @@ Import reads a matching ZIP archive, validates schema compatibility, and upserts
 
 | Layer | Technology |
 |-------|-----------|
-| Language | Kotlin 2.1.0 |
+| Language | Kotlin 2.3.21 |
 | UI | Compose Multiplatform 1.7.3 |
 | Persistence | Room 2.7.0-alpha12 (SQLite) |
 | Dates | kotlinx-datetime 0.6.2 |

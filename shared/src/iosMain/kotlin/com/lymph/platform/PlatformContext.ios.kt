@@ -7,10 +7,6 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSURL
 import platform.Foundation.NSUserDomainMask
 
-/**
- * iOS implementation of [PlatformContext].
- * Uses the app's Documents directory for persistent storage.
- */
 @OptIn(BetaInteropX::class)
 class IosPlatform : PlatformContext {
 
@@ -28,8 +24,7 @@ class IosPlatform : PlatformContext {
     }
 
     override fun createLymphDatabase(): LymphDatabase {
-        // TODO: Implement iOS-specific persistent database (SQLDelight, Realm, etc.)
-        // For now return stub - will need actual implementation
-        throw UnsupportedOperationException("iOS database not yet implemented")
+        val dbPath = "$getDataDirectory()/lymph.db"
+        return LymphDatabase(dbPath)
     }
 }

@@ -3,11 +3,7 @@ package com.lymph.data.dao
 import com.lymph.data.entity.BowelRecord
 import kotlinx.coroutines.flow.Flow
 
-/**
- * Expect declaration for bowel DAO.
- * Actual implementations provided in nativeMain (Room) and wasmJsMain (in-memory).
- */
-expect interface BowelDao {
+interface BowelDao {
 
     fun getAll(): Flow<List<BowelRecord>>
 

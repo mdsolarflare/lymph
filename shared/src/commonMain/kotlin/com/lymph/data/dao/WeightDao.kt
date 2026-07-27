@@ -3,11 +3,8 @@ package com.lymph.data.dao
 import com.lymph.data.entity.WeightRecord
 import kotlinx.coroutines.flow.Flow
 
-/**
- * Expect declaration for weight DAO.
- * Actual implementations provided in nativeMain (Room) and wasmJsMain (in-memory).
- */
-expect interface WeightDao {
+/** DAO contract for weight records. */
+interface WeightDao {
 
     fun getAll(): Flow<List<WeightRecord>>
 

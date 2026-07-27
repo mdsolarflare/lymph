@@ -14,25 +14,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 
-/**
- * Native (Android/iOS) implementation of BiometricViewModel.
- * Uses Room DAOs with Compose state for reactivity.
- */
-actual class BiometricViewModel(
+actual class BiometricViewModel actual constructor(
     private val weightDao: WeightDao,
     private val periodDao: PeriodDao,
     private val bowelDao: BowelDao,
-    val database: LymphDatabase
+    actual val database: LymphDatabase
 ) {
 
     private var _weights: List<WeightRecord> by mutableStateOf(emptyList())
-    val weights: List<WeightRecord> get() = _weights
+    actual val weights: List<WeightRecord> get() = _weights
 
     private var _periods: List<PeriodRecord> by mutableStateOf(emptyList())
-    val periods: List<PeriodRecord> get() = _periods
+    actual val periods: List<PeriodRecord> get() = _periods
 
     private var _bowels: List<BowelRecord> by mutableStateOf(emptyList())
-    val bowels: List<BowelRecord> get() = _bowels
+    actual val bowels: List<BowelRecord> get() = _bowels
 
     actual fun startObserving(scope: CoroutineScope) {
         scope.launch { weightDao.getAll().collect { _weights = it } }
@@ -47,23 +43,18 @@ actual class BiometricViewModel(
     actual fun insertWeight(record: WeightRecord) {
         GlobalScope.launch { weightDao.insert(record) }
     }
-
     actual fun insertPeriod(record: PeriodRecord) {
         GlobalScope.launch { periodDao.insert(record) }
     }
-
     actual fun insertBowel(record: BowelRecord) {
         GlobalScope.launch { bowelDao.insert(record) }
     }
-
     actual fun deleteWeight(id: String) {
         GlobalScope.launch { weightDao.delete(id) }
     }
-
     actual fun deletePeriod(id: String) {
         GlobalScope.launch { periodDao.delete(id) }
     }
-
     actual fun deleteBowel(id: String) {
         GlobalScope.launch { bowelDao.delete(id) }
     }

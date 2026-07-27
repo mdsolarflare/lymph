@@ -2,18 +2,26 @@ package com.lymph.data.dao
 
 import com.lymph.data.entity.PeriodRecord
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * WASM stub interface for period records.
- * Same contract as Room DAO, implemented in-memory in [LymphDatabase.periodDao].
- */
-actual interface PeriodDao {
+class MemoryPeriodDao : PeriodDao {
 
-    actual fun getAll(): Flow<List<PeriodRecord>>
+    private val _all = MutableStateFlow(emptyList<PeriodRecord>())
 
-    actual suspend fun getSnapshot(): List<PeriodRecord>
+    override fun getAll(): Flow<List<PeriodRecord>> = _all.asStateFlow()
 
-    actual suspend fun insert(record: PeriodRecord)
+    override suspend fun getSnapshot(): List<PeriodRecord> = _all.value
 
-    actual suspend fun delete(id: String)
+    override suspend fun insert(record: PeriodRecord) {
+        val current = _all.value.toMutableList()
+        if (!current.any { it.id == record.id }) {
+            current.add(0, record)
+            _all.value = current
+        }
+    }
+
+    override suspend fun delete(id: String) {
+        _all.value = _all.value.filter { it.id != id }
+    }
 }

@@ -1,20 +1,21 @@
 package com.lymph.data.database
 
-import com.lymph.data.dao.BowelDao
-import com.lymph.data.dao.PeriodDao
-import com.lymph.data.dao.WeightDao
+import com.lymph.data.dao.*
 
-/**
- * WASM stub declaration of LymphDatabase.
- * The concrete in-memory implementation is provided by [WasmLymphDatabase].
- */
-actual abstract class LymphDatabase {
+actual class LymphDatabase actual constructor(dbPath: String) {
 
     actual companion object {
-        actual const val DATABASE_NAME = "lymph.db"
+        actual const val DATABASE_NAME: String = "lymph.db"
     }
 
-    actual abstract fun weightDao(): WeightDao
-    actual abstract fun periodDao(): PeriodDao
-    actual abstract fun bowelDao(): BowelDao
+    private var _weightDao: MemoryWeightDao? = null
+    private var _periodDao: MemoryPeriodDao? = null
+    private var _bowelDao: MemoryBowelDao? = null
+
+    actual fun weightDao(): WeightDao = (_weightDao ?: MemoryWeightDao()).also { _weightDao = it }
+    actual fun periodDao(): PeriodDao = (_periodDao ?: MemoryPeriodDao()).also { _periodDao = it }
+    actual fun bowelDao(): BowelDao  = (_bowelDao ?: MemoryBowelDao()).also { _bowelDao = it }
+
+    actual suspend fun open() {} // no-op for in-memory
+    actual suspend fun close() {}
 }

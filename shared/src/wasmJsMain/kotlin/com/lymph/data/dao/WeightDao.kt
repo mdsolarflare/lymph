@@ -2,18 +2,26 @@ package com.lymph.data.dao
 
 import com.lymph.data.entity.WeightRecord
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * WASM stub interface for weight records.
- * Same contract as Room DAO, implemented in-memory in [LymphDatabase.weightDao].
- */
-actual interface WeightDao {
+class MemoryWeightDao : WeightDao {
 
-    actual fun getAll(): Flow<List<WeightRecord>>
+    private val _all = MutableStateFlow(emptyList<WeightRecord>())
 
-    actual suspend fun getSnapshot(): List<WeightRecord>
+    override fun getAll(): Flow<List<WeightRecord>> = _all.asStateFlow()
 
-    actual suspend fun insert(record: WeightRecord)
+    override suspend fun getSnapshot(): List<WeightRecord> = _all.value
 
-    actual suspend fun delete(id: String)
+    override suspend fun insert(record: WeightRecord) {
+        val current = _all.value.toMutableList()
+        if (!current.any { it.id == record.id }) {
+            current.add(0, record)
+            _all.value = current
+        }
+    }
+
+    override suspend fun delete(id: String) {
+        _all.value = _all.value.filter { it.id != id }
+    }
 }
