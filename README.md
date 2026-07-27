@@ -14,36 +14,71 @@ Offline-first biometric data sanctuary. Zero servers. Zero telemetry. Your body'
 
 ## Architecture
 
-Lymph is a **100% client-side** Kotlin Multiplatform application. There is no backend, no cloud sync service, and no network calls. All data persists locally via Room (SQLite) on native targets. Cross-device portability is achieved through explicit CSV export/import — you own the migration path.
+Lymph is a **100% client-side** Kotlin Multiplatform application. There is no backend, no cloud sync service, and no network calls. All data persists locally via raw SQLite on native targets — hand-written SQL, no ORM. Cross-device portability is achieved through explicit CSV export/import — you own the migration path.
 
 ### Targets
 
 | Target | Module | Runtime | Storage |
 |--------|--------|---------|---------|
-| Android | `:androidApp` | Native APK, minSdk 24 | Room (SQLite) |
-| iOS | `:shared` → Xcode host | Native via Kotlin/Native | Room (SQLite) |
-| Web | `:webApp` | WASM JS, browser-hosted | In-memory + CSV export/import |
+| Android | `:androidApp` | Native APK, minSdk 24 | SQLite via `SQLiteDatabase` (built into SDK) |
+| iOS | `:shared` → Xcode host | Native via Kotlin/Native | sqlite3 C API (ships with iOS) |
+| Web | `:webApp` | WASM JS, browser-hosted | In-memory + CSV export/import ([sql.js](https://sql.js.org) planned) |
 
-> **Note:** Room does not support WASM. The web target shares all business logic and UI but uses a stub database at runtime. Data portability on web is handled entirely through the CSV export/import pipeline.
+### Persistence Strategy
+
+No ORM. No code generation layer. Three hand-written SQL tables, direct query strings in each DAO implementation:
+
+```sql
+-- Weight records
+CREATE TABLE IF NOT EXISTS weight_records (
+    id TEXT PRIMARY KEY, timestamp INTEGER NOT NULL,
+    weight_kg REAL NOT NULL, note TEXT);
+
+-- Period records
+CREATE TABLE IF NOT EXISTS period_records (
+    id TEXT PRIMARY KEY, timestamp INTEGER NOT NULL,
+    duration_days INTEGER NOT NULL, flow_intensity INTEGER NOT NULL DEFAULT 2,
+    symptoms TEXT);
+
+-- Bowel records
+CREATE TABLE IF NOT EXISTS bowel_records (
+    id TEXT PRIMARY KEY, timestamp INTEGER NOT NULL,
+    bristol_type INTEGER NOT NULL, effort_level INTEGER NOT NULL DEFAULT 3,
+    note TEXT);
+```
+
+A thin `SqlExecutor` interface abstracts the platform-specific SQLite binding:
+
+| Platform | Binding | Layer |
+|----------|---------|-------|
+| Android | `android.database.sqlite.SQLiteDatabase` | Built into SDK, zero dependencies |
+| iOS | sqlite3 C API via Kotlin/Native interop | Ships with iOS, zero dependencies |
+| Web | In-memory DAOs (sql.js integration pending) | Falls back gracefully; CSV export/import for persistence |
 
 ### Module Layout
 
 ```
 lymph/
 ├── shared/                          # Multiplatform core
-│   ├── src/commonMain/kotlin/       # Entities, DAOs, ViewModel, Compose UI, theme
+│   ├── src/commonMain/kotlin/       # Entities, DAO contracts, ViewModel, Compose UI, theme
 │   │   └── com/lymph/
-│   │       ├── data/                # Room entities, DAOs, database factory
+│   │       ├── data/                # Plain entities, DAO interfaces, SqlExecutor contract
+│   │       │   ├── db/              # SqlExecutor / SqlRowMapper / SqlRow common types
+│   │       │   ├── dao/             # WeightDao, PeriodDao, BowelDao (plain interfaces)
+│   │       │   ├── entity/          # WeightRecord, PeriodRecord, BowelRecord (data classes)
+│   │       │   └── export/          # CsvEncoder, ZipEncoder, DataExporter
 │   │       ├── platform/            # PlatformContext abstraction
 │   │       ├── ui/                  # Compose screens, components, theme
-│   │       └── util/               # UUID generator, timestamp formatting
-│   ├── src/androidMain/kotlin/      # AndroidPlatform, AndroidDataExporter
-│   ├── src/iosMain/kotlin/          # IosPlatform, IosDataExporter
-│   └── schemas/                     # Room schema exports (migration tracking)
+│   │       └── util/                # UUID generator, timestamp formatting
+│   ├── src/nativeMain/kotlin/       # SqlExecutor impl (NativeSqlExecutor), SQL-backed DAOs
+│   ├── src/androidMain/kotlin/      # AndroidSqlHandle (SQLiteDatabase interop)
+│   ├── src/iosMain/kotlin/          # IosSqlHandle (sqlite3 C API interop)
+│   └── src/wasmJsMain/kotlin/       # In-memory DAOs, WasmPlatform
 ├── androidApp/                      # Android Compose UI shell
 │   └── src/main/kotlin/com/lymph/   # MainActivity + platform wiring
 ├── webApp/                          # Web Compose UI shell (WASM JS)
-│   └── src/wasmJsMain/kotlin/       # WasmPlatform, WasmDataExporter, main()
+│   └── src/wasmJsMain/kotlin/       # Main.kt, WasmPlatform, WasmDataExporter
+│   └── src/wasmJsMain/resources/    # index.html, sql-bridge.js
 └── gradle/libs.versions.toml        # Version catalog (single source of truth)
 ```
 
@@ -69,9 +104,9 @@ Strict monospace across all surfaces. No variable fonts, no weight hierarchy bey
 
 ## Data Model
 
-### Storage: Multi-Table Room Schema
+### Entities — Plain Kotlin data classes
 
-Three distinct tables, each indexed on `timestamp` for efficient range queries and chronological sorting. All entities implement a common `BiometricRecord` interface exposing `id: String` (UUID v4) and `timestamp: Long` (epoch millis).
+Three entities, one common interface. No annotations, no expect/actual split:
 
 ```kotlin
 interface BiometricRecord {
@@ -79,36 +114,51 @@ interface BiometricRecord {
     val timestamp: Long  // epoch milliseconds
 }
 
-@Entity(tableName = "weight_records", indices = [Index(value = ["timestamp"])])
 data class WeightRecord(
-    @PrimaryKey val id: String,
+    override val id: String,
     override val timestamp: Long,
     val weightKg: Double,
     val note: String? = null
 ) : BiometricRecord
 
-@Entity(tableName = "period_records", indices = [Index(value = ["timestamp"])])
 data class PeriodRecord(
-    @PrimaryKey val id: String,
+    override val id: String,
     override val timestamp: Long,
     val durationDays: Int,
-    val flowIntensity: Int,      // 1-5 scale
+    val flowIntensity: Int = 2,       // 1-4 scale
     val symptoms: String? = null
 ) : BiometricRecord
 
-@Entity(tableName = "bowel_records", indices = [Index(value = ["timestamp"])])
 data class BowelRecord(
-    @PrimaryKey val id: String,
+    override val id: String,
     override val timestamp: Long,
-    val bristolType: Int,        // Bristol Stool Scale 1-7
-    val effortLevel: Int,        // 1-5 scale
+    val bristolType: Int,              // Bristol Stool Scale 1-7
+    val effortLevel: Int = 3,          // 1-5 scale
     val note: String? = null
 ) : BiometricRecord
 ```
 
-### DAO Layer
+### DAO Layer — Plain interfaces + per-platform implementations
 
-Each table has a dedicated DAO with `getAll()` (Flow for reactive UI), `getSnapshot()` (one-shot for export), `insert()`, and `delete(id)`. A `BiometricViewModel` aggregates all three DAOs.
+Each record type has a plain interface in `commonMain`:
+
+```kotlin
+interface WeightDao {
+    fun getAll(): Flow<List<WeightRecord>>
+    suspend fun getSnapshot(): List<WeightRecord>
+    suspend fun insert(record: WeightRecord)
+    suspend fun delete(id: String)
+}
+```
+
+Platform-specific implementations:
+
+| Platform | Concrete class | Backed by |
+|----------|---------------|-----------|
+| Native (Android/iOS) | `SqlWeightDao` | Real SQLite via `NativeSqlExecutor` |
+| Web (WASM JS) | `MemoryWeightDao` | In-memory `MutableStateFlow` list |
+
+A `BiometricViewModel` (expect/actual class) aggregates all three DAOs and exposes reactive state to the UI.
 
 ## UI Infrastructure
 
@@ -161,7 +211,7 @@ Master-Detail layout exploiting horizontal space for dense data visualization.
 The `+` button opens a modal with clean dial/counter controls for manual entry. Each record type presents its own set of controls:
 
 - **Weight**: Numeric dial for kg, optional note field.
-- **Period**: Duration counter, flow intensity selector (1–5), symptoms text.
+- **Period**: Duration counter, flow intensity selector (1–4), symptoms text.
 - **Bowel**: Bristol Stool Scale picker (1–7), effort level (1–5), optional note.
 
 Timestamp is auto-populated to `now()`.
@@ -191,7 +241,7 @@ Import reads a matching ZIP archive, validates schema compatibility, and upserts
 |-------|-----------|
 | Language | Kotlin 2.3.21 |
 | UI | Compose Multiplatform 1.7.3 |
-| Persistence | Room 2.7.0-alpha12 (SQLite) |
+| Persistence | Raw SQLite — no ORM, hand-written SQL |
 | Dates | kotlinx-datetime 0.6.2 |
 | I/O | kotlinx-io-core 0.7.0 |
 | Web Runtime | Kotlin/WASM JS |
@@ -315,7 +365,7 @@ The `:shared` module produces an XCFramework consumable by an Xcode host project
 
 The dev server starts at `http://localhost:8080` by default. Open in any modern browser (Chrome, Firefox, Safari).
 
-**Testing:** Standard browser DevTools apply. The web target uses an in-memory database stub — all data is lost on page refresh. Use the CSV export feature to persist data across sessions during development.
+**Testing:** Standard browser DevTools apply. The web target uses an in-memory database — all data is lost on page refresh. Use the CSV export feature to persist data across sessions during development. sql.js integration for persistent web storage is planned as a follow-up.
 
 ## CI/CD
 
@@ -329,6 +379,7 @@ The dev server starts at `http://localhost:8080` by default. Open in any modern 
 - **UUID primary keys.** All records use UUID v4 strings — no auto-increment integers.
 - **Timestamps as epoch millis.** Stored as `Long`, formatted via shared `formatTimestamp()` utility.
 - **Explicit multi-table design.** Never merge biometric types into a single table. Each domain gets its own entity, DAO, and CSV export file.
+- **Raw SQL only.** No ORM, no code generation layer. Hand-written queries are clearer than generated ones at this scale.
 
 ## License
 
