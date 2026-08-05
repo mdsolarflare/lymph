@@ -1,35 +1,28 @@
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 plugins {
-    alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.compose.compiler)
-    alias(libs.plugins.compose.multiplatform)
+    alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.composeMultiplatform)
+    alias(libs.plugins.composeCompiler)
 }
 
 kotlin {
+    js(IR) {
+        browser()
+        binaries.executable()
+    }
+
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
-        browser {
-            commonWebpackConfig {
-                outputFileName = "lymph.js"
-            }
-        }
+        browser()
         binaries.executable()
     }
 
     sourceSets {
-        val wasmJsMain by getting {
-            dependencies {
-                implementation(compose.html.core)
-                implementation(libs.kotlinx.datetime)
-                implementation(libs.kotlinx.io.core)
-                implementation(project(":shared"))
-            }
+        commonMain.dependencies {
+            implementation(project(":shared"))
+            implementation(compose.ui)
         }
     }
 }
 
-compose.resources {
-    publicResClass = true
-    generateResClass = auto
-}

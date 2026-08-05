@@ -12,7 +12,7 @@ import com.lymph.data.entity.PeriodRecord
 import com.lymph.data.entity.WeightRecord
 import com.lymph.ui.viewmodel.BiometricViewModel
 import com.lymph.util.Uuid
-import kotlinx.datetime.Clock
+import com.lymph.util.currentTimeMillis
 
 /**
  * Input modal with clean dial/counter controls for manual data entry.
@@ -91,7 +91,7 @@ private fun WeightForm(vm: BiometricViewModel, onDismiss: () -> Unit) {
                 vm.insertWeight(
                     WeightRecord(
                         id = Uuid.randomV4(),
-                        timestamp = Clock.System.now().toEpochMilliseconds(),
+                        timestamp = currentTimeMillis(),
                         weightKg = weight,
                         note = note.ifEmpty { null }
                     )
@@ -141,7 +141,7 @@ private fun PeriodForm(vm: BiometricViewModel, onDismiss: () -> Unit) {
                 vm.insertPeriod(
                     PeriodRecord(
                         id = Uuid.randomV4(),
-                        timestamp = Clock.System.now().toEpochMilliseconds(),
+                        timestamp = currentTimeMillis(),
                         durationDays = duration,
                         flowIntensity = flow,
                         symptoms = symptoms.ifEmpty { null }
@@ -192,7 +192,7 @@ private fun BowelForm(vm: BiometricViewModel, onDismiss: () -> Unit) {
                 vm.insertBowel(
                     BowelRecord(
                         id = Uuid.randomV4(),
-                        timestamp = Clock.System.now().toEpochMilliseconds(),
+                        timestamp = currentTimeMillis(),
                         bristolType = bristol,
                         effortLevel = effort,
                         note = note.ifEmpty { null }

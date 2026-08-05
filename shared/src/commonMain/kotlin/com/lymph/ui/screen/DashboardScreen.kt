@@ -26,8 +26,20 @@ import kotlinx.coroutines.launch
  * EXPANDED: Master-detail grid with sidebar nav + wide data panels side-by-side.
  */
 @OptIn(ExperimentalMaterial3Api::class)
+object DashboardScreen {
+    @Composable
+    fun Preview() {
+        androidx.compose.material3.Text(
+            text = "> PREVIEW",
+            modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DashboardScreen(
+fun DashboardScreenContent(
     viewModel: BiometricViewModel,
     exporter: DataExporter,
     isExpanded: Boolean

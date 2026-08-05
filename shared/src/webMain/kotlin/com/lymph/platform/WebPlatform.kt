@@ -5,7 +5,7 @@ import com.lymph.data.export.CsvEncoder
 import com.lymph.data.export.DataExporter
 import com.lymph.data.export.ZipEncoder
 
-class WasmPlatform : PlatformContext {
+class WebPlatform : PlatformContext {
 
     override fun getDataDirectory(): String = "lymph_data"
 
@@ -14,7 +14,7 @@ class WasmPlatform : PlatformContext {
     }
 }
 
-class WasmDataExporter : DataExporter {
+class WebDataExporter : DataExporter {
 
     override suspend fun exportZip(database: LymphDatabase): ByteArray {
         val weights = database.weightDao().getSnapshot()

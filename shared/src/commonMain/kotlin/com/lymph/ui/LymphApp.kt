@@ -1,11 +1,20 @@
 package com.lymph.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.lymph.data.database.LymphDatabase
 import com.lymph.data.export.DataExporter
-import com.lymph.ui.screen.DashboardScreen
+
+import com.lymph.ui.theme.LymphRed
 import com.lymph.ui.theme.LymphTheme
 import com.lymph.ui.viewmodel.BiometricViewModel
 
@@ -45,8 +54,25 @@ fun LymphApp(
 
     LymphTheme {
         when (initState) {
-            InitState.LOADING -> {} // TODO: Show loading indicator
-            InitState.ERROR   -> {} // TODO: Show error screen
+            InitState.LOADING -> {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text("> initializing...", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            InitState.ERROR -> {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text("> INIT FAILED", color = LymphRed)
+                    Text("> database could not be opened", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
             InitState.READY  -> {
                 val vm = viewModel!!
                 val scope2 = rememberCoroutineScope()
@@ -57,7 +83,7 @@ fun LymphApp(
 
                 BoxWithConstraints {
                     val isExpanded = maxWidth > 840.dp
-                    DashboardScreen(
+                    com.lymph.ui.screen.DashboardScreenContent(
                         viewModel = vm,
                         exporter = exporter,
                         isExpanded = isExpanded

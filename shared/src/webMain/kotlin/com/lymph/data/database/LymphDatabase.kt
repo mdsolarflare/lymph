@@ -16,6 +16,6 @@ actual class LymphDatabase actual constructor(dbPath: String) {
     actual fun periodDao(): PeriodDao = (_periodDao ?: MemoryPeriodDao()).also { _periodDao = it }
     actual fun bowelDao(): BowelDao  = (_bowelDao ?: MemoryBowelDao()).also { _bowelDao = it }
 
-    actual suspend fun open() {} // no-op for in-memory
+    actual suspend fun open() {}
     actual suspend fun close() {}
 }

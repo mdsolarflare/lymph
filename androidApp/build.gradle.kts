@@ -1,29 +1,29 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.compose.compiler)
-    alias(libs.plugins.compose.multiplatform)
+    alias(libs.plugins.composeCompiler)
 }
 
 kotlin {
-    androidTarget()
-
-    sourceSets {
-        androidMain.dependencies {
-            implementation(compose.preview)
-            implementation(libs.androidx.activity.compose)
-        }
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_17
     }
+}
+
+dependencies {
+    implementation(project(":shared"))
+    implementation(libs.androidx.activity.compose)
 }
 
 android {
     namespace = "com.lymph"
-    compileSdk = libs.versions.android.compileSdk.get().toInt()
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.lymph.app"
-        minSdk = libs.versions.android.minSdk.get().toInt()
-        targetSdk = libs.versions.android.targetSdk.get().toInt()
+        minSdk = 24
+        targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
 
@@ -42,9 +42,14 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
-}
 
-dependencies {
-    implementation(project(":shared"))
-    debugImplementation(compose.uiTooling)
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+        }
+    }
+
+    buildFeatures {
+        compose = true
+    }
 }

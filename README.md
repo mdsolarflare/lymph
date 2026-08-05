@@ -22,7 +22,7 @@ Lymph is a **100% client-side** Kotlin Multiplatform application. There is no ba
 |--------|--------|---------|---------|
 | Android | `:androidApp` | Native APK, minSdk 24 | SQLite via `SQLiteDatabase` (built into SDK) |
 | iOS | `:shared` → Xcode host | Native via Kotlin/Native | sqlite3 C API (ships with iOS) |
-| Web | `:webApp` | WASM JS, browser-hosted | In-memory + CSV export/import ([sql.js](https://sql.js.org) planned) |
+| Web | `:webApp` | JS (IR), browser-hosted via Compose HTML renderer | In-memory + CSV export/import |
 
 ### Persistence Strategy
 
@@ -53,9 +53,7 @@ A thin `SqlExecutor` interface abstracts the platform-specific SQLite binding:
 |----------|---------|-------|
 | Android | `android.database.sqlite.SQLiteDatabase` | Built into SDK, zero dependencies |
 | iOS | sqlite3 C API via Kotlin/Native interop | Ships with iOS, zero dependencies |
-| Web | In-memory DAOs (sql.js integration pending) | Falls back gracefully; CSV export/import for persistence |
-
-### Module Layout
+| Web (JS IR) | `MemoryWeightDao`, etc. | In-memory `MutableStateFlow` lists; CSV export/import for persistence |
 
 ```
 lymph/
@@ -76,9 +74,8 @@ lymph/
 │   └── src/wasmJsMain/kotlin/       # In-memory DAOs, WasmPlatform
 ├── androidApp/                      # Android Compose UI shell
 │   └── src/main/kotlin/com/lymph/   # MainActivity + platform wiring
-├── webApp/                          # Web Compose UI shell (WASM JS)
-│   └── src/wasmJsMain/kotlin/       # Main.kt, WasmPlatform, WasmDataExporter
-│   └── src/wasmJsMain/resources/    # index.html, sql-bridge.js
+├── webApp/                          # Web Compose UI shell (JS IR)
+│   └── src/jsMain/kotlin/           # Main.kt — browser entry point via renderComposable
 └── gradle/libs.versions.toml        # Version catalog (single source of truth)
 ```
 
@@ -244,7 +241,31 @@ Import reads a matching ZIP archive, validates schema compatibility, and upserts
 | Persistence | Raw SQLite — no ORM, hand-written SQL |
 | Dates | kotlinx-datetime 0.6.2 |
 | I/O | kotlinx-io-core 0.7.0 |
-| Web Runtime | Kotlin/WASM JS |
+| Web Runtime | Kotlin/JS (IR) — see [Web Rendering Note](#web-rendering-note)
+
+### Web Rendering Note: `compose.html.core` vs `compose.web.core`
+
+Compose Multiplatform provides two web rendering paths:
+
+| Dependency | Target | Status in Compose MP 1.7.3 |
+|---|---|---|
+| `compose.html.core` (HTML renderer) | JS IR only | **Working** — this is what we use for webApp |
+| `compose.web.core` (Wasm renderer) | wasmJs | Deprecated in 1.7.3, points back to html-core internally |
+
+**Key constraint:** `compose.html.core` produces `.klib` artifacts for JS IR **only**. It has no wasmJs artifacts. If placed in a source set shared between JS and wasmJs (like `commonMain`), the compiler fails with:
+
+```
+Couldn't resolve dependency 'org.jetbrains.compose.html:html-core' in 'commonMain' for all target platforms.
+The dependency should target platforms: [js, wasmJs]
+Unresolved platforms: [wasmJs]
+```
+
+**Resolution:** webApp targets JS IR only. `compose.html.core` goes in `jsMain.dependencies`, never in `commonMain`. The wasmJs target exists in `shared` for future-proofing but is not used by webApp.
+
+Also, Compose MP 1.7.x klibs were built against Kotlin 1.9.x ABI. When using Kotlin 2.3.x with the K2 compiler, ensure:
+- Use `compose.runtime`, `compose.foundation`, `compose.material3`, `compose.ui` from `commonMain.dependencies`
+- These resolve correctly across JS IR and native targets under K2
+- Do not manually add `compose.html.core` to shared modules — it is auto-injected by the Compose plugin when a `js { browser() }` target is declared in a module that applies `org.jetbrains.compose`
 
 ## Development Environment
 
@@ -356,16 +377,16 @@ The `:shared` module produces an XCFramework consumable by an Xcode host project
 ### Web
 
 ```bash
-# Build production WASM bundle
-./gradlew :webApp:wasmJsBrowserProductionWebpack
+# Build production JS bundle
+./gradlew :webApp:jsBrowserProductionWebpack
 
 # Run development server with hot reload
-./gradlew :webApp:wasmJsBrowserDevelopmentRun
+./gradlew :webApp:jsBrowserDevelopmentRun
 ```
 
 The dev server starts at `http://localhost:8080` by default. Open in any modern browser (Chrome, Firefox, Safari).
 
-**Testing:** Standard browser DevTools apply. The web target uses an in-memory database — all data is lost on page refresh. Use the CSV export feature to persist data across sessions during development. sql.js integration for persistent web storage is planned as a follow-up.
+**Testing:** Standard browser DevTools apply. The web target uses an in-memory database — all data is lost on page refresh. Use the CSV export feature to persist data across sessions during development.
 
 ## CI/CD
 
@@ -381,6 +402,11 @@ The dev server starts at `http://localhost:8080` by default. Open in any modern 
 - **Explicit multi-table design.** Never merge biometric types into a single table. Each domain gets its own entity, DAO, and CSV export file.
 - **Raw SQL only.** No ORM, no code generation layer. Hand-written queries are clearer than generated ones at this scale.
 
-## License
-
-See [LICENSE](LICENSE).
+# Standing Agent Rules
+Rules Established:
+1. **Identify issues** → List by importance (biggest first) → **Fix only #1** → Test → Loop back to step 1
+2. **Avoid overriding defined versions from dependencies** - let version catalog manage compatibility. If you run into a version conflict, you must ask the user how we should resolve it.
+3. **Stick with idiomatic Kotlin** - no unnecessary complexity
+4. **Use `./gradlew`** for builds (not system gradle), you may need to provide the JAVA_HOME and GRADLE_HOME locations
+5. **Reference `example-kmp-app/` as a strong working template** - it is a working template project that you can reference for compatibility and scaffolding.
+6. **Do not edit `example-kmp-app`**

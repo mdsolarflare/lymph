@@ -2,87 +2,80 @@ import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.compose.compiler)
-    alias(libs.plugins.compose.multiplatform)
-    id("com.android.library")
-}
-
-android {
-    namespace = "com.lymph.shared"
-    compileSdk = 35
-    defaultConfig {
-        minSdk = 24
-    }
+    alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.android.multiplatform.library)
+    alias(libs.plugins.composeMultiplatform)
+    alias(libs.plugins.composeCompiler)
 }
 
 kotlin {
-    jvmToolchain(25)
+    jvmToolchain(17)
 
-    androidTarget {
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_25)
+    // ── iOS targets (native SQLite via sqlite3 C API) ─────────────
+    listOf(
+        iosArm64(),
+        iosSimulatorArm64()
+    ).forEach { target ->
+        target.binaries.framework {
+            baseName = "shared"
+            isStatic = true
         }
     }
 
-    iosArm64()
-    iosSimulatorArm64()
+    // ── Web targets (JS IR + WASM, Skia/Canvas via ComposeViewport) ──
+    js(IR) {
+        browser()
+    }
 
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
-        browser {
-            commonWebpackConfig {
-                outputFileName = "lymph.js"
-            }
+        browser()
+    }
+
+    // ── Android target ───────────────────────────────────────────
+    android {
+        namespace = "com.lymph.shared"
+        compileSdk = 35
+        minSdk = 24
+
+        compilerOptions {
+            jvmTarget = JvmTarget.JVM_17
         }
-        binaries.executable()
     }
 
     sourceSets {
-        val commonMain by getting {
-            dependencies {
-                // Compose (available on all targets)
-                implementation(compose.runtime)
-                implementation(compose.foundation)
-                implementation(compose.material3)
-                implementation(compose.ui)
-                implementation(compose.components.resources)
-                implementation(compose.components.uiToolingPreview)
+        commonMain.dependencies {
+            implementation(compose.runtime)
+            implementation(compose.foundation)
+            implementation(compose.material3)
+            implementation(compose.ui)
+            implementation(compose.components.resources)
+            implementation(compose.components.uiToolingPreview)
+            implementation(compose.materialIconsExtended)
 
-                // Utilities (pure Kotlin, no platform deps)
-                implementation(libs.kotlinx.datetime)
-                implementation(libs.kotlinx.io.core)
-            }
+            implementation(libs.kotlinx.datetime)
+            implementation(libs.kotlinx.io.core)
         }
 
-        val commonTest by getting {
-            dependencies {
-                implementation(kotlin("test"))
-            }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
         }
 
-        // ── Native (Android + iOS) — ViewModel, native SQLite driver ────
-
-        val nativeMain by creating {
-            dependsOn(commonMain)
+        // ── Native (Android + iOS) — raw SQLite via platform bindings ──
+        val nativeMain = create("nativeMain") {
+            dependsOn(commonMain.get())
         }
 
-        val androidMain by getting {
-            dependsOn(nativeMain)
+        androidMain.get().dependsOn(nativeMain)
+        iosArm64Main.get().dependsOn(nativeMain)
+        iosSimulatorArm64Main.get().dependsOn(nativeMain)
+
+        // ── Web (JS IR + WASM, in-memory DAOs via ComposeViewport) ──
+        val webMain = create("webMain") {
+            dependsOn(commonMain.get())
         }
 
-        val iosArm64Main by getting {
-            dependsOn(nativeMain)
-        }
-
-        val iosSimulatorArm64Main by getting {
-            dependsOn(nativeMain)
-        }
-
-        // ── WASM JS — web worker SQLite driver ──────────────────────────
-
-        val wasmJsMain by getting {
-            dependsOn(commonMain)
-        }
+        jsMain.get().dependsOn(webMain)
+        wasmJsMain.get().dependsOn(webMain)
     }
 }
