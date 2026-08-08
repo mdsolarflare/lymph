@@ -1,8 +1,8 @@
 package com.lymph.data.db
 
-import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteStatement
 import java.io.File
 
 /**
@@ -10,7 +10,7 @@ import java.io.File
  */
 actual fun platformOpen(path: String): SqlHandle {
     val dbFile = File(path)
-    if (!dbFile.parentFile?.exists() == true) {
+    if (dbFile.parentFile?.exists() != true) {
         dbFile.parentFile?.mkdirs()
     }
     return AndroidSqlHandle(SQLiteDatabase.openOrCreateDatabase(dbFile, null))
@@ -45,13 +45,14 @@ class AndroidSqlHandle(private val db: SQLiteDatabase) : SqlHandle {
         db.close()
     }
 
-    private fun bind(stmt: SQLiteDatabase.Statement, index: Long, value: Any?) {
+    private fun bind(stmt: SQLiteStatement, index: Long, value: Any?) {
+        val i = index.toInt()
         when (value) {
-            is String -> stmt.bindString(index, value)
-            is Long   -> stmt.bindLong(index, value)
-            is Int    -> stmt.bindLong(index, value.toLong())
-            is Double -> stmt.bindDouble(index, value)
-            null      -> stmt.bindNull(index)
+            is String -> stmt.bindString(i, value)
+            is Long   -> stmt.bindLong(i, value)
+            is Int    -> stmt.bindLong(i, value.toLong())
+            is Double -> stmt.bindDouble(i, value)
+            null      -> stmt.bindNull(i)
             else      -> error("Unsupported bind type: ${value::class.simpleName}")
         }
     }

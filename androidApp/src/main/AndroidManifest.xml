@@ -5,7 +5,7 @@
         android:allowBackup="true"
         android:label="Lymph"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:icon="@android:drawable/ic_menu_info_details">
 
         <activity

@@ -281,8 +281,10 @@ Primary development runs on **macOS (Apple Silicon)** — MacBook Neo or equival
 
 We use [`asdf`](https://github.com/asdf-vm/asdf) for version-managed runtimes:
 
+**JDK 17 is required.** AGP 9.x compiles against a JDK 17 toolchain. Gradle can *run* on newer JDKs (e.g., JDK 25), but it still needs a JDK 17 installation available to compile the project.
+
 ```bash
-# Install JVM (required for Gradle)
+# Install JVM — must be JDK 17 for AGP compatibility
 asdf plugin add java
 asdf install java temurin@17.0.13
 asdf global java temurin@17.0.13
@@ -296,9 +298,15 @@ asdf global nodejs 22.x
 Verify:
 
 ```bash
-java -version   # must be JDK 17+
+java -version   # must show JDK 17.x
 node --version  # optional, 20+ recommended
 ```
+
+> **Windows note:** If your only JDK is not version 17 (e.g., Microsoft JDK 25), you must set `JAVA_HOME` to a JDK 17 path before running Gradle:
+> ```bash
+> export JAVA_HOME="/c/Program Files/Eclipse Adoptium/jdk-17.0.x+xx"
+> ./gradlew build
+> ```
 
 ### Android SDK
 
@@ -410,3 +418,5 @@ Rules Established:
 4. **Use `./gradlew`** for builds (not system gradle), you may need to provide the JAVA_HOME and GRADLE_HOME locations
 5. **Reference `example-kmp-app/` as a strong working template** - it is a working template project that you can reference for compatibility and scaffolding.
 6. **Do not edit `example-kmp-app`**
+7. **Use Gradle tasks for all build and cleanup operations** — never use `rmdir`, `rm -rf`, or manual directory deletion. Use `./gradlew clean` instead of deleting the `build/` directory manually.
+8. **Project requires JDK 17 toolchain.** AGP 9.x compiles against JDK 17 specifically. Never change `jvmToolchain(17)` in build files. On Windows, set `JAVA_HOME` to a JDK 17 path before running Gradle if the default JDK is not version 17.

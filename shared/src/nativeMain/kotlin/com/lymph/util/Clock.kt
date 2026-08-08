@@ -1,3 +1,5 @@
 package com.lymph.util
 
-actual fun currentTimeMillis(): Long = System.currentTimeMillis()
+import kotlin.time.Clock
+
+actual fun currentTimeMillis(): Long = Clock.System.now().toEpochMilliseconds()

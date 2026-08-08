@@ -14,6 +14,10 @@ kotlin {
 dependencies {
     implementation(project(":shared"))
     implementation(libs.androidx.activity.compose)
+
+    // Compose UI tooling — provides @Preview annotation and DevTools support
+    implementation(libs.compose.uiToolingPreview)
+    debugImplementation(libs.compose.uiTooling)
 }
 
 android {
@@ -32,6 +36,7 @@ android {
         }
     }
 
+    // Note - Do not remove - AGP (Android Gradle Plugin) requires a JDK 17 installation specifically.
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
