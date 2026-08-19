@@ -19,10 +19,17 @@ kotlin {
     }
 
     sourceSets {
-        commonMain.dependencies {
-            implementation(project(":shared"))
-            implementation(compose.ui)
+        // ── Web (JS IR + WASM) — shared web entry point via ComposeViewport ──
+        val webMain = create("webMain") {
+            dependsOn(commonMain.get())
+            dependencies {
+                implementation(project(":shared"))
+                implementation(compose.ui)
+            }
         }
+
+        jsMain.get().dependsOn(webMain)
+        wasmJsMain.get().dependsOn(webMain)
     }
 }
 

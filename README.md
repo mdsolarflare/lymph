@@ -22,7 +22,7 @@ Lymph is a **100% client-side** Kotlin Multiplatform application. There is no ba
 |--------|--------|---------|---------|
 | Android | `:androidApp` | Native APK, minSdk 24 | SQLite via `SQLiteDatabase` (built into SDK) |
 | iOS | `:shared` → Xcode host | Native via Kotlin/Native | sqlite3 C API (ships with iOS) |
-| Web | `:webApp` | JS (IR), browser-hosted via Compose HTML renderer | In-memory + CSV export/import |
+| Web | `:webApp` | JS (IR) **and** wasmJs, browser-hosted via Compose `ComposeViewport` (Skia canvas in Shadow DOM) | In-memory + ZIP download/export |
 
 ### Persistence Strategy
 
@@ -53,7 +53,7 @@ A thin `SqlExecutor` interface abstracts the platform-specific SQLite binding:
 |----------|---------|-------|
 | Android | `android.database.sqlite.SQLiteDatabase` | Built into SDK, zero dependencies |
 | iOS | sqlite3 C API via Kotlin/Native interop | Ships with iOS, zero dependencies |
-| Web (JS IR) | `MemoryWeightDao`, etc. | In-memory `MutableStateFlow` lists; CSV export/import for persistence |
+| Web (JS IR + wasmJs) | `MemoryWeightDao`, etc. (`webMain`) | In-memory `MutableStateFlow` lists; ZIP browser download for persistence |
 
 ```
 lymph/
@@ -71,11 +71,14 @@ lymph/
 │   ├── src/nativeMain/kotlin/       # SqlExecutor impl (NativeSqlExecutor), SQL-backed DAOs
 │   ├── src/androidMain/kotlin/      # AndroidSqlHandle (SQLiteDatabase interop)
 │   ├── src/iosMain/kotlin/          # IosSqlHandle (sqlite3 C API interop)
-│   └── src/wasmJsMain/kotlin/       # In-memory DAOs, WasmPlatform
+│   └── src/webMain/kotlin/          # In-memory DAOs, WebPlatform, browser download helper
+│                                    # (shared by both js(IR) and wasmJs targets)
 ├── androidApp/                      # Android Compose UI shell
 │   └── src/main/kotlin/com/lymph/   # MainActivity + platform wiring
-├── webApp/                          # Web Compose UI shell (JS IR)
-│   └── src/jsMain/kotlin/           # Main.kt — browser entry point via renderComposable
+├── webApp/                          # Web Compose UI shell (JS IR + wasmJs)
+│   └── src/webMain/
+│       ├── kotlin/com/lymph/Main.kt # Entry point — ComposeViewport { LymphApp(...) }
+│       └── resources/               # index.html + styles.css (full-viewport CSS)
 └── gradle/libs.versions.toml        # Version catalog (single source of truth)
 ```
 
@@ -153,7 +156,7 @@ Platform-specific implementations:
 | Platform | Concrete class | Backed by |
 |----------|---------------|-----------|
 | Native (Android/iOS) | `SqlWeightDao` | Real SQLite via `NativeSqlExecutor` |
-| Web (WASM JS) | `MemoryWeightDao` | In-memory `MutableStateFlow` list |
+| Web (JS IR + wasmJs) | `MemoryWeightDao` (`webMain`) | In-memory `MutableStateFlow` list |
 
 A `BiometricViewModel` (expect/actual class) aggregates all three DAOs and exposes reactive state to the UI.
 
@@ -173,7 +176,7 @@ Single-column vertical stack used by Android, iOS, and mobile Web viewports.
 ├─────────────────────────────┤
 │                             │
 │  [ WEIGHT ]                 │
-│  [ PERIOD ]                 │  ← Collapsible metric panels
+│  [ PERIOD ]                 │  ← Metric panels (records or empty state)
 │  [ BOWEL  ]                 │
 │                             │
 └─────────────────────────────┘
@@ -200,8 +203,12 @@ Master-Detail layout exploiting horizontal space for dense data visualization.
 │ ─────    │                                       │
 │ ADD      │                                       │
 │ RECORD   │                                       │
+│ EXPORT   │                                       │
+│ DATA     │                                       │
 └──────────┴───────────────────────────────────────┘
 ```
+
+- **Sidebar**: section labels (decorative — all panels are always visible), ADD RECORD button, and an EXPORT DATA button that triggers the ZIP download + snackbar.
 
 ### Input Modal
 
@@ -209,7 +216,7 @@ The `+` button opens a modal with clean dial/counter controls for manual entry. 
 
 - **Weight**: Numeric dial for kg, optional note field.
 - **Period**: Duration counter, flow intensity selector (1–4), symptoms text.
-- **Bowel**: Bristol Stool Scale picker (1–7), effort level (1–5), optional note.
+- **Bowel**: Bristol Stool Scale counter (1–7), effort level counter (1–5), optional note.
 
 Timestamp is auto-populated to `now()`.
 
@@ -226,7 +233,7 @@ lymph-export.zip/
 └── bowel_records.csv        # id,timestamp,bristolType,effortLevel,note
 ```
 
-Export is triggered from the drawer menu (mobile) or master sidebar (web). The ZIP payload is returned as `ByteArray` via the platform-specific `DataExporter`.
+Export is triggered from the drawer menu (mobile) or the EXPORT DATA button in the master sidebar (expanded web layout). On web, `WebDataExporter.exportZip()` builds the ZIP and hands it to a small JS helper (`BrowserDownload.kt`) that creates a Blob + object URL and clicks a hidden anchor — the archive lands in the browser's Downloads folder as `lymph-export.zip`. The payload is also returned as `ByteArray` via the platform-specific `DataExporter` for future import support.
 
 ### CSV Import
 
@@ -236,36 +243,24 @@ Import reads a matching ZIP archive, validates schema compatibility, and upserts
 
 | Layer | Technology |
 |-------|-----------|
-| Language | Kotlin 2.3.21 |
-| UI | Compose Multiplatform 1.7.3 |
+| Language | Kotlin 2.4.10 |
+| UI | Compose Multiplatform 1.11.1 (material3 1.9.0) |
 | Persistence | Raw SQLite — no ORM, hand-written SQL |
-| Dates | kotlinx-datetime 0.6.2 |
+| Dates | kotlinx-datetime 0.8.0 |
 | I/O | kotlinx-io-core 0.7.0 |
-| Web Runtime | Kotlin/JS (IR) — see [Web Rendering Note](#web-rendering-note)
+| Web Runtime | Kotlin/JS (IR) + wasmJs — see [Web Rendering Note](#web-rendering-note)
 
-### Web Rendering Note: `compose.html.core` vs `compose.web.core`
+### Web Rendering Note: `ComposeViewport` (Skia canvas), not the HTML renderer
 
-Compose Multiplatform provides two web rendering paths:
+The web app renders through **`ComposeViewport`** — Compose Multiplatform's Skia-based canvas renderer. The canvas lives inside a **Shadow DOM** attached to `<body>`, so:
 
-| Dependency | Target | Status in Compose MP 1.7.3 |
-|---|---|---|
-| `compose.html.core` (HTML renderer) | JS IR only | **Working** — this is what we use for webApp |
-| `compose.web.core` (Wasm renderer) | wasmJs | Deprecated in 1.7.3, points back to html-core internally |
+- Light-DOM queries (`document.querySelector`) will not find Compose nodes; use DevTools' shadow-piercing inspection or CDP with `includeCommandLineAPI`/deep search.
+- `webApp/src/webMain/resources/index.html` must link a stylesheet that makes `html, body` fill the viewport (see `styles.css`). Without it the canvas collapses to content height and only a thin strip of UI is visible.
 
-**Key constraint:** `compose.html.core` produces `.klib` artifacts for JS IR **only**. It has no wasmJs artifacts. If placed in a source set shared between JS and wasmJs (like `commonMain`), the compiler fails with:
+**Dual-target constraint:** the `webMain` source set compiles for **both** `js(IR)` and `wasmJs`, so any web code must stay compatible with both. Notable Kotlin/Wasm interop limits hit during development:
 
-```
-Couldn't resolve dependency 'org.jetbrains.compose.html:html-core' in 'commonMain' for all target platforms.
-The dependency should target platforms: [js, wasmJs]
-Unresolved platforms: [wasmJs]
-```
-
-**Resolution:** webApp targets JS IR only. `compose.html.core` goes in `jsMain.dependencies`, never in `commonMain`. The wasmJs target exists in `shared` for future-proofing but is not used by webApp.
-
-Also, Compose MP 1.7.x klibs were built against Kotlin 1.9.x ABI. When using Kotlin 2.3.x with the K2 compiler, ensure:
-- Use `compose.runtime`, `compose.foundation`, `compose.material3`, `compose.ui` from `commonMain.dependencies`
-- These resolve correctly across JS IR and native targets under K2
-- Do not manually add `compose.html.core` to shared modules — it is auto-injected by the Compose plugin when a `js { browser() }` target is declared in a module that applies `org.jetbrains.compose`
+- Raw `js("...")` expressions are allowed, but a top-level property initialized from one may only be typed as external/primitive/string/function (not `Unit`).
+- External JS functions cannot take `ByteArray` parameters — pass base64-encoded `String`s instead (see `BrowserDownload.kt`, which installs its helper on `globalThis` and is invoked through a `@JsName` external function).
 
 ## Development Environment
 
@@ -346,10 +341,10 @@ xcode-select --install    # Command Line Tools
 ### Quick Start
 
 ```bash
-# Configure all targets (requires Android SDK + Xcode CLI tools)
-./gradlew configure
+# Web dev server — the fastest way to see the app (JDK 17 via JAVA_HOME required)
+./gradlew :webApp:jsBrowserDevelopmentRun   # → http://localhost:8080
 
-# Build shared module for all platforms
+# Build shared module for all platforms (requires Android SDK + Xcode CLI tools on macOS)
 ./gradlew :shared:assemble
 ```
 
@@ -385,16 +380,19 @@ The `:shared` module produces an XCFramework consumable by an Xcode host project
 ### Web
 
 ```bash
+# Run development server (JS IR) — primary, runtime-verified path
+./gradlew :webApp:jsBrowserDevelopmentRun   # → http://localhost:8080
+
+# wasmJs variant (compiles; runtime not yet verified)
+./gradlew :webApp:wasmJsBrowserDevelopmentRun
+
 # Build production JS bundle
 ./gradlew :webApp:jsBrowserProductionWebpack
-
-# Run development server with hot reload
-./gradlew :webApp:jsBrowserDevelopmentRun
 ```
 
-The dev server starts at `http://localhost:8080` by default. Open in any modern browser (Chrome, Firefox, Safari).
+The dev server starts at `http://localhost:8080` by default. Open in any modern browser (Chrome, Firefox, Safari). Note: the webpack dev server hot-reloads resource changes, but Kotlin source changes require restarting the Gradle task.
 
-**Testing:** Standard browser DevTools apply. The web target uses an in-memory database — all data is lost on page refresh. Use the CSV export feature to persist data across sessions during development.
+**Testing:** Standard browser DevTools apply — remember Compose renders to a canvas inside Shadow DOM, so inspect via shadow-piercing tools rather than plain DOM queries. The web target uses an in-memory database — all data is lost on page refresh. Use the export feature (ZIP download) to persist data across sessions during development.
 
 ## CI/CD
 
@@ -420,3 +418,10 @@ Rules Established:
 6. **Do not edit `example-kmp-app`**
 7. **Use Gradle tasks for all build and cleanup operations** — never use `rmdir`, `rm -rf`, or manual directory deletion. Use `./gradlew clean` instead of deleting the `build/` directory manually.
 8. **Project requires JDK 17 toolchain.** AGP 9.x compiles against JDK 17 specifically. Never change `jvmToolchain(17)` in build files. On Windows, set `JAVA_HOME` to a JDK 17 path before running Gradle if the default JDK is not version 17.
+9. **Gradle 9.x API constraints.** Do not use deprecated Gradle APIs (`toolchainManagement.jvm.repositories {}`, `by creating`). When in doubt about an API, check `example-kmp-app/` or test with a clean build first.
+10. **Android SDK types.** Use `SQLiteStatement` (from `android.database.sqlite.SQLiteStatement`), not `SQLiteDatabase.Statement`. Android bind methods take `Int` index, not `Long`.
+11. **Nullable Boolean comparisons.** Never use `!nullable?.exists()` — Kotlin won't allow negating a nullable Boolean. Use `!= true` instead: `if (dbFile.parentFile?.exists() != true) { ... }`.
+12. **String template method calls** must use braces: `${methodCall()}` not `$methodCall()`.
+13. **Compose tooling annotations require explicit dependencies.** If a module uses `@Preview`, add `implementation(compose.uiToolingPreview)` and optionally `debugImplementation(compose.uiTooling)`. The Compose Multiplatform plugin doesn't auto-inject these into plain Android application modules — use version catalog refs (`libs.compose.uiToolingPreview`) in those modules.
+14. **Cross-compilation awareness.** When writing code for native targets (iOS) that will compile from Windows, avoid JVM-only APIs like `System.currentTimeMillis()`. Use `kotlinx-datetime` or `kotlin.time.Clock.System` instead.
+15. **Read TODO.md at session start** — it contains current build status, priority tasks, and a record of all fixes applied in previous sessions.

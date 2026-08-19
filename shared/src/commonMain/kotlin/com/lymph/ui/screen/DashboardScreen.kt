@@ -1,5 +1,6 @@
 package com.lymph.ui.screen
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -7,11 +8,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.lymph.data.export.DataExporter
+import com.lymph.ui.theme.LymphBlack
 import com.lymph.ui.component.BowelPanel
 import com.lymph.ui.component.InputModal
 import com.lymph.ui.component.PeriodPanel
@@ -44,16 +48,34 @@ fun DashboardScreenContent(
     exporter: DataExporter,
     isExpanded: Boolean
 ) {
-    var showMenu by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
     var showModal by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
+    // Shared export action: builds the ZIP and (on web) triggers a browser download.
+    val doExport: () -> Unit = {
+        coroutineScope.launch {
+            try {
+                exporter.exportZip(viewModel.database)
+                snackbarHostState.showSnackbar("EXPORT OK — zip generated")
+            } catch (e: Exception) {
+                snackbarHostState.showSnackbar("EXPORT FAILED: ${e.message ?: "unknown"}")
+            }
+        }
+    }
+
     // Mobile uses a drawer; expanded does not need one.
     if (isExpanded) {
-        ExpandedLayout(viewModel, onAddClick = { showModal = true })
+        ExpandedLayout(
+            viewModel,
+            onAddClick = { showModal = true },
+            onExportClick = doExport,
+            snackbarHostState = snackbarHostState
+        )
     } else {
         ModalNavigationDrawer(
+            drawerState = drawerState,
             drawerContent = {
                 ModalDrawerSheet {
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -61,25 +83,18 @@ fun DashboardScreenContent(
                         Spacer(Modifier.height(8.dp))
                         HorizontalDivider()
                         DrawerItem(text = "Export Data") {
-                            showMenu = false
-                            coroutineScope.launch {
-                                try {
-                                    exporter.exportZip(viewModel.database)
-                                    snackbarHostState.showSnackbar("EXPORT OK — zip generated")
-                                } catch (e: Exception) {
-                                    snackbarHostState.showSnackbar("EXPORT FAILED: ${e.message ?: "unknown"}")
-                                }
-                            }
+                            coroutineScope.launch { drawerState.close() }
+                            doExport()
                         }
-                        DrawerItem(text = "Settings") { showMenu = false }
+                        DrawerItem(text = "Settings") { coroutineScope.launch { drawerState.close() } }
                     }
                 }
             },
-            gesturesEnabled = showMenu,
+            gesturesEnabled = true,
             content = {
                 MobileLayout(
                     vm = viewModel,
-                    onMenuClick = { showMenu = true },
+                    onMenuClick = { coroutineScope.launch { drawerState.open() } },
                     onAddClick = { showModal = true },
                     snackbarHostState = snackbarHostState
                 )
@@ -144,9 +159,11 @@ private fun MobileLayout(
 @Composable
 private fun ExpandedLayout(
     vm: BiometricViewModel,
-    onAddClick: () -> Unit
+    onAddClick: () -> Unit,
+    onExportClick: () -> Unit,
+    snackbarHostState: SnackbarHostState
 ) {
-    Row(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().background(LymphBlack)) {
         // Sidebar — master nav
         Column(
             modifier = Modifier
@@ -167,6 +184,12 @@ private fun ExpandedLayout(
                 Spacer(Modifier.width(8.dp))
                 Text("ADD RECORD")
             }
+            Spacer(Modifier.height(4.dp))
+            OutlinedButton(onClick = onExportClick, shape = MaterialTheme.shapes.small) {
+                Icon(Icons.Default.Save, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("EXPORT DATA")
+            }
         }
 
         VerticalDivider(modifier = Modifier.fillMaxHeight())
@@ -178,10 +201,16 @@ private fun ExpandedLayout(
                 .padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            WeightPanel(vm.weights, onDelete = vm::deleteWeight)
-            PeriodPanel(vm.periods, onDelete = vm::deletePeriod)
-            BowelPanel(vm.bowels, onDelete = vm::deleteBowel)
+            WeightPanel(vm.weights, onDelete = vm::deleteWeight, modifier = Modifier.weight(1f))
+            PeriodPanel(vm.periods, onDelete = vm::deletePeriod, modifier = Modifier.weight(1f))
+            BowelPanel(vm.bowels, onDelete = vm::deleteBowel, modifier = Modifier.weight(1f))
         }
+
+        // Snackbar host for export feedback (mobile has its own inside the Scaffold)
+        SnackbarHost(
+            snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
+        )
     }
 }
 

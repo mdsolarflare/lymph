@@ -15,10 +15,11 @@ import com.lymph.util.formatTimestamp
 @Composable
 fun BowelPanel(
     records: List<BowelRecord>,
-    onDelete: (String) -> Unit
+    onDelete: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.small,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {

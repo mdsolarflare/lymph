@@ -15,10 +15,11 @@ import com.lymph.util.formatTimestamp
 @Composable
 fun WeightPanel(
     records: List<WeightRecord>,
-    onDelete: (String) -> Unit
+    onDelete: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.small, // sharp corners
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {

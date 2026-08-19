@@ -11,7 +11,8 @@ import com.lymph.data.entity.BowelRecord
 import com.lymph.data.entity.PeriodRecord
 import com.lymph.data.entity.WeightRecord
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 actual class BiometricViewModel actual constructor(
@@ -20,6 +21,9 @@ actual class BiometricViewModel actual constructor(
     private val bowelDao: BowelDao,
     actual val database: LymphDatabase
 ) {
+
+    // Private scope for fire-and-forget DAO writes (replaces deprecated GlobalScope).
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private var _weights: List<WeightRecord> by mutableStateOf(emptyList())
     actual val weights: List<WeightRecord> get() = _weights
@@ -41,21 +45,21 @@ actual class BiometricViewModel actual constructor(
     actual fun setBowels(records: List<BowelRecord>) { _bowels = records }
 
     actual fun insertWeight(record: WeightRecord) {
-        GlobalScope.launch { weightDao.insert(record) }
+        ioScope.launch { weightDao.insert(record) }
     }
     actual fun insertPeriod(record: PeriodRecord) {
-        GlobalScope.launch { periodDao.insert(record) }
+        ioScope.launch { periodDao.insert(record) }
     }
     actual fun insertBowel(record: BowelRecord) {
-        GlobalScope.launch { bowelDao.insert(record) }
+        ioScope.launch { bowelDao.insert(record) }
     }
     actual fun deleteWeight(id: String) {
-        GlobalScope.launch { weightDao.delete(id) }
+        ioScope.launch { weightDao.delete(id) }
     }
     actual fun deletePeriod(id: String) {
-        GlobalScope.launch { periodDao.delete(id) }
+        ioScope.launch { periodDao.delete(id) }
     }
     actual fun deleteBowel(id: String) {
-        GlobalScope.launch { bowelDao.delete(id) }
+        ioScope.launch { bowelDao.delete(id) }
     }
 }
