@@ -13,9 +13,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.lymph.data.export.DataExporter
 import com.lymph.ui.theme.LymphBlack
+import com.lymph.ui.theme.LymphCyan
 import com.lymph.ui.component.BowelPanel
 import com.lymph.ui.component.InputModal
 import com.lymph.ui.component.PeriodPanel
@@ -27,7 +29,7 @@ import kotlinx.coroutines.launch
  * Top-level dashboard that adapts its layout based on [isExpanded].
  *
  * MOBILE:  Single column with top app bar, scrollable content, and FAB.
- * EXPANDED: Master-detail grid with sidebar nav + wide data panels side-by-side.
+ * EXPANDED: Sidebar navigation (one data type selected at a time) + single detail panel.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 object DashboardScreen {
@@ -156,6 +158,13 @@ private fun MobileLayout(
     }
 }
 
+/** Data types navigable from the expanded sidebar. */
+private enum class DataType(val label: String) {
+    WEIGHT("[ WEIGHT ]"),
+    PERIOD("[ PERIOD ]"),
+    BOWEL("[ BOWEL  ]")
+}
+
 @Composable
 private fun ExpandedLayout(
     vm: BiometricViewModel,
@@ -163,8 +172,10 @@ private fun ExpandedLayout(
     onExportClick: () -> Unit,
     snackbarHostState: SnackbarHostState
 ) {
-    Box(Modifier.fillMaxSize().background(LymphBlack)) {
-        // Sidebar — master nav
+    var selected by remember { mutableStateOf(DataType.WEIGHT) }
+
+    Row(Modifier.fillMaxSize().background(LymphBlack)) {
+        // Sidebar — master nav; selecting a data type swaps the detail panel.
         Column(
             modifier = Modifier
                 .width(240.dp)
@@ -175,9 +186,13 @@ private fun ExpandedLayout(
             Text("LYMPH v0.1", style = MaterialTheme.typography.titleMedium)
             HorizontalDivider()
             Spacer(Modifier.height(12.dp))
-            Text("[ WEIGHT ]", style = MaterialTheme.typography.bodyLarge)
-            Text("[ PERIOD ]", style = MaterialTheme.typography.bodyLarge)
-            Text("[ BOWEL  ]", style = MaterialTheme.typography.bodyLarge)
+            DataType.entries.forEach { type ->
+                NavItem(
+                    label = type.label,
+                    selected = type == selected,
+                    onClick = { selected = type }
+                )
+            }
             Spacer(Modifier.weight(1f))
             Button(onClick = onAddClick, shape = MaterialTheme.shapes.small) {
                 Icon(Icons.Default.Add, contentDescription = null)
@@ -194,24 +209,41 @@ private fun ExpandedLayout(
 
         VerticalDivider(modifier = Modifier.fillMaxHeight())
 
-        // Detail panels — side by side
-        Row(
+        // Detail — exactly one panel at a time, for the selected data type.
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(24.dp)
+                .weight(1f)
+                .fillMaxHeight()
+                .padding(16.dp)
         ) {
-            WeightPanel(vm.weights, onDelete = vm::deleteWeight, modifier = Modifier.weight(1f))
-            PeriodPanel(vm.periods, onDelete = vm::deletePeriod, modifier = Modifier.weight(1f))
-            BowelPanel(vm.bowels, onDelete = vm::deleteBowel, modifier = Modifier.weight(1f))
-        }
+            when (selected) {
+                DataType.WEIGHT -> WeightPanel(vm.weights, onDelete = vm::deleteWeight, modifier = Modifier.fillMaxSize())
+                DataType.PERIOD -> PeriodPanel(vm.periods, onDelete = vm::deletePeriod, modifier = Modifier.fillMaxSize())
+                DataType.BOWEL -> BowelPanel(vm.bowels, onDelete = vm::deleteBowel, modifier = Modifier.fillMaxSize())
+            }
 
-        // Snackbar host for export feedback (mobile has its own inside the Scaffold)
-        SnackbarHost(
-            snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
-        )
+            // Snackbar host for export feedback (mobile has its own inside the Scaffold)
+            SnackbarHost(
+                snackbarHostState,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)
+            )
+        }
     }
+}
+
+/** Sidebar navigation entry. Selected item is highlighted with an inverted cyan block. */
+@Composable
+private fun NavItem(label: String, selected: Boolean, onClick: () -> Unit) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.bodyLarge,
+        color = if (selected) LymphBlack else LymphCyan,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (selected) LymphCyan else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 10.dp)
+    )
 }
 
 @Composable

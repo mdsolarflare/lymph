@@ -108,8 +108,8 @@ README says: *"GitHub Actions workflow will be added once local builds are stabl
 ### Settings Drawer Action
 DashboardScreen has a "Settings" drawer item that only closes the drawer. Could wire up theme options or data management (e.g., clear-all, import) in future.
 
-### Expanded Sidebar Nav Items
-The `[ WEIGHT ] / [ PERIOD ] / [ BOWEL ]` labels in the desktop sidebar are decorative text — all panels are always visible in expanded mode, so there is nothing to navigate to. Could become scroll-anchors or filters later.
+### ~~Expanded Sidebar Nav Items~~ ✅ DONE
+The `[ WEIGHT ] / [ PERIOD ] / [ BOWEL ]` sidebar items now work as navigation: selecting one shows exactly that panel in the detail area (one data type at a time), with an inverted-cyan highlight on the selected item. This also fixed layout overlaps — the old `Box`-rooted expanded layout drew the detail row and divider over the 240dp sidebar; it is now a proper `Row` (sidebar → divider → weighted detail area).
 
 ---
 
@@ -124,6 +124,7 @@ The `[ WEIGHT ] / [ PERIOD ] / [ BOWEL ]` labels in the desktop sidebar are deco
 | Export reachable in desktop layout | `DashboardScreen.kt` (`ExpandedLayout`) | README design says export lives in the master sidebar; added EXPORT DATA button + a SnackbarHost (expanded mode had none) wired to the shared `doExport` action |
 | GlobalScope deprecation | `webMain/.../BiometricViewModel.kt`, `nativeMain/.../BiometricViewModel.kt` | Replaced deprecated `GlobalScope.launch` with a private `CoroutineScope(SupervisorJob() + Dispatchers.Default)` owned by the ViewModel |
 | Docs refreshed to match reality | `README.md`, `TODO.md` | README described an HTML renderer, JS-IR-only webApp, and stale versions (Kotlin 2.3.21 / Compose 1.7.3); actual stack is Kotlin 2.4.10 / Compose MP 1.11.1 with ComposeViewport (Skia) on js(IR)+wasmJs |
+| Expanded layout overlaps + sidebar nav | `DashboardScreen.kt` (`ExpandedLayout`, new `NavItem`/`DataType`) | Root was a `Box`: the detail `Row` and `VerticalDivider` both anchored at x=0, drawing over the 240dp sidebar (Weight panel card covered the WEIGHT/PERIOD nav labels). Re-rooted as a proper `Row`; sidebar items are now selectable (`DataType` enum + `remember` state) with inverted-cyan highlight; detail shows exactly one panel via `when(selected)` |
 
 **Testing notes for future sessions:**
 - Dev server: `cd lymph && export JAVA_HOME=<jdk17> && setsid nohup ./gradlew :webApp:jsBrowserDevelopmentRun --no-daemon > /tmp/webdev.log 2>&1 < /dev/null & disown` — wait for "Loopback" in the log.

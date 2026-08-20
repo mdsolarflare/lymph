@@ -195,10 +195,10 @@ Master-Detail layout exploiting horizontal space for dense data visualization.
 │          │                                       │
 │  MASTER  │           DETAIL                      │
 │          │                                       │
-│ ─────    │  [ WEIGHT ]  [ PERIOD ]  [ BOWEL  ]   │
+│ ─────    │  [ PERIOD ]                           │
 │ WEIGHT   │                                       │
-│ PERIOD   │  Side-by-side panels with             │
-│ BOWEL    │  terminal-style readouts              │
+│▓PERIOD▓  │  Single panel for the selected        │
+│ BOWEL    │  data type, terminal-style readout.   │
 │          │                                       │
 │ ─────    │                                       │
 │ ADD      │                                       │
@@ -208,7 +208,8 @@ Master-Detail layout exploiting horizontal space for dense data visualization.
 └──────────┴───────────────────────────────────────┘
 ```
 
-- **Sidebar**: section labels (decorative — all panels are always visible), ADD RECORD button, and an EXPORT DATA button that triggers the ZIP download + snackbar.
+- **Sidebar navigation**: WEIGHT / PERIOD / BOWEL are selectable — exactly one data type is presented at a time in the detail area. The selected item is highlighted with an inverted cyan block (cyan background, black text); unselected items are plain glacial cyan.
+- **Action buttons** pinned to the sidebar bottom: ADD RECORD and EXPORT DATA (ZIP download + snackbar).
 
 ### Input Modal
 
@@ -391,6 +392,14 @@ The `:shared` module produces an XCFramework consumable by an Xcode host project
 ```
 
 The dev server starts at `http://localhost:8080` by default. Open in any modern browser (Chrome, Firefox, Safari). Note: the webpack dev server hot-reloads resource changes, but Kotlin source changes require restarting the Gradle task.
+
+**Fresh checkout:** `kotlin-js-store/` is gitignored, so the first web build on a clean clone fails with `Lock file was changed. Run the kotlinUpgradeYarnLock task`. Fix once with:
+
+```bash
+./gradlew kotlinUpgradeYarnLock   # regenerates kotlin-js-store/yarn.lock locally
+```
+
+Also: if a yarn install is interrupted (network drop, killed build), it can corrupt `build/js/node_modules` and the lock state. Recover with `./gradlew clean && ./gradlew kotlinUpgradeYarnLock`, then rebuild.
 
 **Testing:** Standard browser DevTools apply — remember Compose renders to a canvas inside Shadow DOM, so inspect via shadow-piercing tools rather than plain DOM queries. The web target uses an in-memory database — all data is lost on page refresh. Use the export feature (ZIP download) to persist data across sessions during development.
 
