@@ -3,10 +3,17 @@ package com.lymph.ui.component
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.lymph.data.entity.WeightRecord
+import com.lymph.ui.chart.WeightTrendChart
 import com.lymph.util.formatTimestamp
+import com.lymph.util.formatWeight
 
 /**
  * Terminal-style weight readout panel.
@@ -41,8 +48,36 @@ fun WeightPanel(
                     modifier = Modifier.padding(top = 4.dp)
                 )
             } else {
-                records.forEach { record ->
-                    WeightRow(record, onDelete)
+                WeightTrendChart(records, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp))
+
+                // Paginated table — newest first (DAO order), 10 records per page.
+                val pageSize = 10
+                var page by remember { mutableIntStateOf(0) }
+                val pageCount = (records.size + pageSize - 1) / pageSize
+                val safePage = page.coerceIn(0, pageCount - 1)
+                records.subList(safePage * pageSize, minOf((safePage + 1) * pageSize, records.size))
+                    .forEach { record -> WeightRow(record, onDelete) }
+
+                if (pageCount > 1) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("[ ${safePage + 1}/$pageCount ]", style = MaterialTheme.typography.labelSmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            OutlinedButton(
+                                onClick = { page-- },
+                                enabled = safePage > 0,
+                                shape = MaterialTheme.shapes.small
+                            ) { Text("<") }
+                            OutlinedButton(
+                                onClick = { page++ },
+                                enabled = safePage < pageCount - 1,
+                                shape = MaterialTheme.shapes.small
+                            ) { Text(">") }
+                        }
+                    }
                 }
             }
         }
@@ -62,7 +97,7 @@ private fun WeightRow(record: WeightRecord, onDelete: (String) -> Unit) {
             style = MaterialTheme.typography.bodyMedium
         )
         Text(
-            "${record.weightKg} kg",
+            "${formatWeight(record.weightKg)} kg",
             style = MaterialTheme.typography.bodyLarge
         )
         if (!record.note.isNullOrEmpty()) {

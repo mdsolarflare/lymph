@@ -12,6 +12,13 @@ import androidx.compose.ui.unit.sp
 /**
  * Lymph uses a strict monospace typography everywhere.
  * No rounded corners, no soft shadows — clinical precision only.
+ *
+ * WARNING: every typography slot below hardcodes its color. An explicit style
+ * color beats M3's LocalContentColor mechanism, so components whose content
+ * color differs from the slot color render invisible text — e.g. filled
+ * [androidx.compose.material3.Button] (content should be onPrimary = LymphBlack)
+ * draws cyan-on-cyan with a bare Text(). Any label inside such a component must
+ * pass an explicit style: `style = MaterialTheme.typography.bodyLarge.copy(color = LymphBlack)`.
  */
 @Composable
 fun LymphTheme(content: @Composable () -> Unit) {
@@ -67,6 +74,8 @@ fun LymphTheme(content: @Composable () -> Unit) {
         colorScheme = darkColorScheme(
             primary = LymphCyan,
             onPrimary = LymphBlack,
+            primaryContainer = LymphCyan,
+            onPrimaryContainer = LymphBlack,
             background = LymphBlack,
             surface = LymphSurface,
             onSurface = LymphCyan,

@@ -25,6 +25,7 @@ kotlin {
     // ── Web targets (JS IR + WASM, Skia/Canvas via ComposeViewport) ──
     js(IR) {
         browser()
+        nodejs() // enables :shared:jsNodeTest — runs commonTest on Node (no Android SDK / macOS needed)
     }
 
     @OptIn(ExperimentalWasmDsl::class)
@@ -41,6 +42,10 @@ kotlin {
         compilerOptions {
             jvmTarget = JvmTarget.JVM_17
         }
+
+        // JVM unit tests for commonTest (only test runner available in CI-less dev envs;
+        // iOS needs macOS, JS/wasmJs have no test environment configured).
+        withHostTest {}
     }
 
     sourceSets {

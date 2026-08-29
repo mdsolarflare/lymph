@@ -197,7 +197,7 @@ private fun ExpandedLayout(
             Button(onClick = onAddClick, shape = MaterialTheme.shapes.small) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("ADD RECORD")
+                Text("ADD RECORD", style = MaterialTheme.typography.bodyLarge.copy(color = LymphBlack))
             }
             Spacer(Modifier.height(4.dp))
             OutlinedButton(onClick = onExportClick, shape = MaterialTheme.shapes.small) {

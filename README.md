@@ -211,11 +211,21 @@ Master-Detail layout exploiting horizontal space for dense data visualization.
 - **Sidebar navigation**: WEIGHT / PERIOD / BOWEL are selectable — exactly one data type is presented at a time in the detail area. The selected item is highlighted with an inverted cyan block (cyan background, black text); unselected items are plain glacial cyan.
 - **Action buttons** pinned to the sidebar bottom: ADD RECORD and EXPORT DATA (ZIP download + snackbar).
 
+### Weight Panel
+
+The weight panel shows a trend chart above a paginated table:
+
+- **Trend chart**: line over time with square markers, dim gridlines and "nice" y-ticks. The y-axis auto-scales to the visible data range (+padding) — it is never zero-based, so small fluctuations stay legible. Tick/date labels are monospace Text overlays (canvas text APIs differ across Compose MP targets).
+- **X-range selector**: `[90D] [1Y] [ALL]` toggles above the chart (default 90D). Records outside the selected window are excluded from both chart and axis; if none remain, the panel shows `> no data in range`.
+- **Pagination**: the table lists at most **10 records per page**, newest first. When there is more than one page a terminal-style pager `[ n/N ]` with `<`/`>` buttons appears below the table.
+
+Chart math lives in pure Kotlin (`ui/chart/ChartModel.kt`) and is unit-tested in `commonTest`; run tests with `:shared:jsNodeTest` (Node) or `:shared:testAndroid` (needs Android SDK).
+
 ### Input Modal
 
 The `+` button opens a modal with clean dial/counter controls for manual entry. Each record type presents its own set of controls:
 
-- **Weight**: Numeric dial for kg, optional note field.
+- **Weight**: Unit toggle (KG / LB) + an **editable** weight field in the selected unit — pre-filled with the last recorded weight when you open it (70 kg default on first use); type any value directly, or step ±0.1 with the dial buttons. Input is filtered to digits and at most two decimal places; validation checks the canonical stored value against **0.1–1000 kg** (in LB mode the typed value is converted first, so validation applies to exactly what would be stored; effective window ≈ 0.21–2204.63 lb) — out-of-range values render red and disable SAVE. Internally the value is parsed to integer hundredths (no floating-point drift); switching units converts the current value. Storage is always canonical kilograms (`weightKg`; lb → kg uses the exact factor `0.45359237`). Optional note field.
 - **Period**: Duration counter, flow intensity selector (1–4), symptoms text.
 - **Bowel**: Bristol Stool Scale counter (1–7), effort level counter (1–5), optional note.
 
@@ -433,4 +443,4 @@ Rules Established:
 12. **String template method calls** must use braces: `${methodCall()}` not `$methodCall()`.
 13. **Compose tooling annotations require explicit dependencies.** If a module uses `@Preview`, add `implementation(compose.uiToolingPreview)` and optionally `debugImplementation(compose.uiTooling)`. The Compose Multiplatform plugin doesn't auto-inject these into plain Android application modules — use version catalog refs (`libs.compose.uiToolingPreview`) in those modules.
 14. **Cross-compilation awareness.** When writing code for native targets (iOS) that will compile from Windows, avoid JVM-only APIs like `System.currentTimeMillis()`. Use `kotlinx-datetime` or `kotlin.time.Clock.System` instead.
-15. **Read TODO.md at session start** — it contains current build status, priority tasks, and a record of all fixes applied in previous sessions.
+15. **Read GOAL.md at session start** (renamed from TODO.md on Aug 27) — it contains current build status, priority tasks, session handoff notes, and a record of all fixes applied in previous sessions.
