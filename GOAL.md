@@ -202,7 +202,47 @@ Files:
 
 **Edge cases handled:** 0 records → existing "> no data" state (no chart); records exist but none in selected range → "> no data in range" message instead of chart; 1 record → single centered marker, no line; min==max → symmetric ±padding around the value.
 
-After this milestone: same pagination pattern + charts for PERIOD (duration bars) and BOWEL (Bristol histogram) — **only after user verifies those sections**.
+After this milestone: same pagination pattern + charts for PERIOD and BOWEL — done in the next session (see "Milestone: Period + Bowel Charts" below; user reordered priorities so these came before CSV import).
+
+---
+
+## Milestone: Period + Bowel Charts — ⚠️ IMPLEMENTED, INCOMPLETE & UNVERIFIED (user's call, Aug 29)
+
+> **Status note:** the user is not confident in their ability to test this work and has asked that it stay marked **incomplete and unverified** until they verify it themselves. The implementation below builds, passes unit tests, and passed an agent-driven E2E pass — but treat the milestone as **open**, not done. Do not describe these charts as verified/shipped in user-facing docs.
+
+**Scope (agreed with user):** same timeline concept as the weight chart, but each of these types has **two parameters**, so each chart renders **two lines on one shared auto-scaled y-axis** in sufficiently contrasting colors. User explicitly reordered priorities: this milestone before CSV import/export testing.
+
+What shipped:
+1. **Shared generic chart**: `MultiTrendChart` composable (range selector + optional legend + gridlines + N polylines/square markers + tick/date labels). `WeightTrendChart`, `PeriodTrendChart`, `BowelTrendChart` are now thin adapters over it.
+2. **Model refactor** (`ChartModel.kt`, pure Kotlin): `WeightRange` → shared `TimeRange`; single-series weight model replaced by generic `MultiSeries` / `SeriesLine` + `mapMultiSeries(...)`; `niceTicks(..., minStep)` and `formatIntegerTick(...)` so period/bowel use whole-number ticks while weight keeps decimal formatting.
+3. **Colors**: first parameter uses existing `LymphCyan` (#D6F9FF); second uses new **`LymphAmber` (#FFB454)** — strong hue + lightness contrast on the near-black background, cyan/amber is a color-blind-safe pair (documented in `Colors.kt`).
+   - PERIOD: line 1 = duration (days), line 2 = flow intensity [1–4]. Legend: `DURATION (days)` / `FLOW [1-4]`.
+   - BOWEL: line 1 = Bristol type [1–7], line 2 = effort level [1–5]. Legend: `BRISTOL[1-7]` / `EFFORT [1-5]`.
+4. **Panels**: `PeriodPanel` and `BowelPanel` now show the chart above a paginated table (10/page, `[ n/N ]` pager) — same pattern as `WeightPanel`.
+
+**Bug found & fixed in model:** an empty series among non-empty ones crashed `minOf` on an empty list in `mapMultiSeries` — guarded; covered by unit test.
+
+**Bug found & fixed during E2E (desktop layout):** the detail panel lived in a plain `Box(fillMaxHeight)` with no scrolling, so chart + 10 rows + pager (~880px) exceeded the ~868px viewport and **the pager was clipped off-screen**. Fix in `DashboardScreen.kt` (`ExpandedLayout`): wrap the single selected panel in a `Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()))` and pass panels `fillMaxWidth()` instead of `fillMaxSize()`. Mobile layout already scrolled; unchanged.
+
+Files:
+- `shared/src/commonMain/kotlin/com/lymph/ui/chart/MultiTrendChart.kt` (new) — generic composable.
+- `shared/src/commonMain/kotlin/com/lymph/ui/chart/PeriodTrendChart.kt`, `BowelTrendChart.kt` (new) — thin adapters.
+- `shared/src/commonMain/kotlin/com/lymph/ui/chart/WeightTrendChart.kt` — now a thin adapter too.
+- `shared/src/commonMain/kotlin/com/lymph/ui/chart/ChartModel.kt` — TimeRange / MultiSeries refactor.
+- `shared/src/commonMain/kotlin/com/lymph/ui/theme/Colors.kt` — LymphAmber.
+- `shared/src/commonMain/kotlin/com/lymph/ui/component/PeriodPanel.kt`, `BowelPanel.kt` — chart + pagination.
+- `shared/src/commonMain/kotlin/com/lymph/ui/screen/DashboardScreen.kt` — scrollable detail column (desktop pager clip fix).
+- `shared/src/commonTest/kotlin/com/lymph/ui/chart/ChartModelTest.kt` — rewritten for multi-series; **14/14 passing** via `:shared:jsNodeTest`.
+
+**Agent-driven E2E pass (headless Chromium + CDP, JS IR dev server) — NOT a substitute for user verification:**
+- Seeded 12 PERIOD records (varied duration/flow) + 6 BOWEL records (varied Bristol/effort) through the real UI modal.
+- Mobile PERIOD: two lines (cyan + amber pixel-verified), legend `DURATION (days)` / `FLOW [1-4]`, table rows in seed order.
+- Desktop BOWEL: two lines, legend `BRISTOL[1-7]` / `EFFORT [1-5]`. Desktop PERIOD: same + first 10 paginated rows.
+- Pagination on desktop: page 1 = exactly 10 rows + `[1/2] < >`; clicking `>` → page 2 shows the remaining 2 oldest records in correct order (newest-first).
+- Range toggle: selected fill moves from 90D to ALL after click (pixel bbox verified at the ALL button position; see color note below).
+- Weight regression: single record → single centered marker + date label, `70 kg` table row — adapter refactor didn't break weight.
+
+**Range-button pixel colors (for future E2E):** selected-but-unfocused fill = **#363B3C** (= primary #D6F9FF @ 15% alpha over surface #1A1A1A); a button that was just clicked also gets the M3 focus overlay → fill reads **#424547**. Both mean "selected" — don't treat the color difference as a regression.
 
 ---
 
@@ -236,14 +276,47 @@ After this milestone: same pagination pattern + charts for PERIOD (duration bars
 - `/workspace` is a Windows C: drive mount with **corrupted `.gradle/9.6.1/*.lock` files** that block Gradle in `/workspace/lymph` (`Could not create service of type FileHasher ... Input/output error`). All builds run from the `/root/lymph-build` mirror (healthy overlay fs). A watcher at `/tmp/watch-locks.sh` removes the locks automatically once the Windows side releases them. If you hit this, check `cat /workspace/lymph/.gradle/9.6.1/fileHashes/fileHashes.lock` first.
 - CDP E2E scripts live in `/tmp/cdp-*.mjs` (ephemeral — patterns: seed via FAB/modal coordinates, verify via screenshots + OCR/pixel analysis; see Testing notes below).
 
+## Session Handoff — Aug 29 (period + bowel charts completed)
+
+**What happened this session:**
+- User reordered priorities: PERIOD + BOWEL charts **before** CSV import. Implemented both as two-line timeline charts on one shared auto-scaled y-axis (cyan = first parameter, new amber #FFB454 = second; color-blind-safe pair), reusing the weight chart's range selector + pagination pattern.
+- Refactored `ChartModel.kt` to a generic multi-series model (`TimeRange`, `MultiSeries`, `mapMultiSeries`) and extracted a shared `MultiTrendChart` composable; weight/period/bowel charts are now thin adapters. Whole-number ticks for period/bowel via `niceTicks(minStep)` + `formatIntegerTick`.
+- Fixed a real desktop layout bug found during E2E: the detail panel's pager was clipped off-screen (no scroll in `ExpandedLayout`) — wrapped the selected panel in a vertical-scroll Column.
+- Unit tests rewritten for multi-series: **14/14 passing** (`:shared:jsNodeTest`). Full E2E pass on headless Chromium: two-line charts + legends mobile & desktop, pagination `[1/2]`→`[2/2]`, range toggle 90D→ALL, weight single-marker regression. Details in the milestone section above.
+
+**Git state at handoff (branch `prototype`):**
+- Latest commit: `365aef0 "added timeline"` (user's — captured the weight-chart milestone).
+- **Uncommitted working tree** (all verified building + E2E-passing):
+  ```
+  M  shared/.../ui/chart/ChartModel.kt          # TimeRange / MultiSeries refactor, minStep ticks
+  M  shared/.../ui/chart/WeightTrendChart.kt    # now a thin adapter over MultiTrendChart
+  M  shared/.../ui/component/BowelPanel.kt      # chart + pagination
+  M  shared/.../ui/component/PeriodPanel.kt     # chart + pagination
+  M  shared/.../ui/screen/DashboardScreen.kt    # scrollable detail column (desktop pager clip fix)
+  M  shared/.../ui/theme/Colors.kt              # LymphAmber (#FFB454)
+  M  shared/src/commonTest/.../ChartModelTest.kt  # multi-series tests, 14 total
+  ?? shared/.../ui/chart/MultiTrendChart.kt     # generic two-line chart composable (new)
+  ?? shared/.../ui/chart/PeriodTrendChart.kt    # adapter (new)
+  ?? shared/.../ui/chart/BowelTrendChart.kt     # adapter (new)
+  ```
+- User manages commits themselves — advise what to commit, don't commit.
+
+**Environment notes for the next session:**
+- Fresh container this time: reinstalled JDK 17 (`/usr/lib/jvm/java-17-openjdk-amd64`), Chromium (headless CDP on :9222), Tesseract + ImageMagick. The `/root/lymph-build` mirror from the previous session was gone; **builds now run directly in `/workspace/lymph`** — the corrupted `.gradle` locks no longer block Gradle here (verify with a quick `./gradlew :shared:jsNodeTest` if in doubt).
+- Stale Windows-generated paths under `build/js/**/kotlin-js-store` / yarn workspaces can break the first build after a fresh checkout — recovery that worked: fix/remove stale workspace entries then `./gradlew kotlinUpgradeYarnLock`, rebuild.
+- The dev server died once mid-session for no obvious reason (no crash in log, memory fine). Recovery: kill any stragglers (`pkill -f jsBrowserDevelopmentRun`), restart with the setsid/nohup pattern below, wait for "Loopback", then **reload the page and re-seed** — all data is in-memory on web.
+- Dev server: `cd /workspace/lymph && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && setsid nohup ./gradlew :webApp:jsBrowserDevelopmentRun --no-daemon > /tmp/webdev.log 2>&1 < /dev/null & disown` — wait for "Loopback".
+- CDP driver this session: `/tmp/cdp.mjs` (commands: `nav`, `shot`, `click x y`, `metrics w h`, `wheel x y dy`, `wait ms`) + `/tmp/seed-period.mjs` / `/tmp/seed-bowel.mjs` (mobile 375×812 coordinates). Ephemeral — recreate from the Testing notes if gone.
+- **Desktop (1280×900) E2E coordinates**: sidebar nav WEIGHT/PERIOD/BOWEL ≈ (100, 83/127/171); ADD RECORD button ≈ **(128, 791)** (filled cyan block y≈772–811 — clicks at y>815 miss it); EXPORT DATA text ≈ (73–128, 854). Input modal on desktop is centered: SAVE button center ≈ **(872, 607)**. Range buttons top-right of chart: selected-90D fill bbox x≈1075–1130 y≈73–110; ALL button center ≈ (1220, 91).
+
 ## Current State (checkpoint)
 
 The web portal is **ugly but working end-to-end** — that's the agreed v0.1 bar:
 
 - Mobile: dashboard, drawer (Export Data / Settings), FAB → input modal, reactive panels, real ZIP download.
-- Desktop (>840dp): sidebar with ADD RECORD + EXPORT DATA, single-panel detail area driven by selectable WEIGHT/PERIOD/BOWEL nav (inverted-cyan highlight), snackbar feedback.
+- Desktop (>840dp): sidebar with ADD RECORD + EXPORT DATA, single-panel detail area driven by selectable WEIGHT/PERIOD/BOWEL nav (inverted-cyan highlight), snackbar feedback. Detail column scrolls when content exceeds the viewport (pager no longer clips).
 - Weight entry: KG/LB unit toggle, integer-hundredths precision (no float drift), ≤2 decimal places; canonical kg storage. Verified end-to-end via CDP: 70 → +4×0.1 → dial "70.4" → CSV `70.4`; LB round-trip 70kg → 154.32lb → +0.1 → 154.42lb → CSV `70.04` kg.
-- Weight panel: trend chart with `[90D] [1Y] [ALL]` range selector above a paginated table (10/page, `[ n/N ]` pager). Unit-tested (`ChartModelTest`, 9/9 via `:shared:jsNodeTest`) + E2E verified on mobile and desktop.
+- **All three panels** have a trend chart with `[90D] [1Y] [ALL]` range selector above a paginated table (10/page, `[ n/N ]` pager): WEIGHT single cyan line; PERIOD two lines (duration + flow); BOWEL two lines (Bristol + effort) — cyan/amber pair. Unit-tested (`ChartModelTest`, 14/14 via `:shared:jsNodeTest`) and passed an agent-driven E2E pass, but **marked incomplete & unverified at the user's request** — they will verify these sections themselves.
 - Both web targets compile; JS IR is the runtime-verified path.
 
-Next up: **Priority 2 — Android runtime test** (needs emulator/device; unit tests already run via `:shared:jsNodeTest`). Then v0.2 features (CSV import first — it's the natural pair to the now-working export), and PERIOD/BOWEL charts once the user verifies those sections.
+Next up (in progress): **v0.2 CSV import** — `CsvDecoder` + `ZipDecoder` + `DataImporter` in commonMain, web file-picker interop, IMPORT DATA UI on web only (native pickers deferred). Full format docs land in `docs/DATA-EXCHANGE.md`. Priority 2 Android runtime test still pending on a machine with an SDK/emulator.

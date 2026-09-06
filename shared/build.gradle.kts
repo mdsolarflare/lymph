@@ -64,6 +64,8 @@ kotlin {
 
         commonTest.dependencies {
             implementation(kotlin("test"))
+            // runTest — the JS/wasm-safe way to drive suspend code in tests (no runBlocking off-JVM)
+            implementation(libs.kotlinx.coroutines.test)
         }
 
         // ── Native (Android + iOS) — raw SQLite via platform bindings ──

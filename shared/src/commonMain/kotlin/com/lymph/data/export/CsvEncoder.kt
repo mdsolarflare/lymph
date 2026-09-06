@@ -14,14 +14,14 @@ import com.lymph.data.entity.WeightRecord
  */
 object CsvEncoder {
 
-    /** CSV header for weight records. */
-    private const val WEIGHT_HEADER = "id,timestamp,weightKg,note"
+    /** CSV header for weight records (also the schema contract checked by [CsvDecoder]). */
+    const val WEIGHT_HEADER = "id,timestamp,weightKg,note"
 
-    /** CSV header for period records. */
-    private const val PERIOD_HEADER = "id,timestamp,durationDays,flowIntensity,symptoms"
+    /** CSV header for period records (also the schema contract checked by [CsvDecoder]). */
+    const val PERIOD_HEADER = "id,timestamp,durationDays,flowIntensity,symptoms"
 
-    /** CSV header for bowel records. */
-    private const val BOWEL_HEADER = "id,timestamp,bristolType,effortLevel,note"
+    /** CSV header for bowel records (also the schema contract checked by [CsvDecoder]). */
+    const val BOWEL_HEADER = "id,timestamp,bristolType,effortLevel,note"
 
     /**
      * Encodes a list of weight records to CSV string.

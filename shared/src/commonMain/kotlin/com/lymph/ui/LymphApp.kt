@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.lymph.data.database.LymphDatabase
 import com.lymph.data.export.DataExporter
+import com.lymph.platform.FilePicker
 
 import com.lymph.ui.theme.LymphRed
 import com.lymph.ui.theme.LymphTheme
@@ -30,7 +31,8 @@ private enum class InitState { LOADING, READY, ERROR }
 @Composable
 fun LymphApp(
     database: LymphDatabase,
-    exporter: DataExporter
+    exporter: DataExporter,
+    filePicker: FilePicker? = null // web only for now — native pickers deferred; import UI hides itself without one
 ) {
     var initState by remember { mutableStateOf<InitState>(InitState.LOADING) }
     var viewModel by remember { mutableStateOf<BiometricViewModel?>(null) }
@@ -86,7 +88,8 @@ fun LymphApp(
                     com.lymph.ui.screen.DashboardScreenContent(
                         viewModel = vm,
                         exporter = exporter,
-                        isExpanded = isExpanded
+                        isExpanded = isExpanded,
+                        filePicker = filePicker
                     )
                 }
             }

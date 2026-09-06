@@ -24,7 +24,7 @@ object ZipEncoder {
         for ((name, content) in entries) {
             val nameBytes = name.encodeToByteArray()
             val data = content.encodeToByteArray()
-            val crc = crc32(data)
+            val crc = Crc32.compute(data)
 
             // Local file header
             val localHeader = buildLocalFileHeader(nameBytes, data, crc)
@@ -187,18 +187,4 @@ object ZipEncoder {
         buffer[pos + 1] = ((value ushr 8) and 0xFF).toByte()
     }
 
-    /**
-     * CRC-32 (PKZIP polynomial 0xEDB88320) — IEEE 802.3 compatible.
-     */
-    private fun crc32(data: ByteArray): Int {
-        val polynomial = 0xEDB88320L
-        var crc = 0xFFFFFFFFL
-        for (byte in data) {
-            crc = crc xor (byte.toLong() and 0xFFL)
-            for (i in 0 until 8) {
-                crc = if (crc and 1L != 0L) (crc ushr 1) xor polynomial else crc ushr 1
-            }
-        }
-        return (crc.inv() and 0xFFFFFFFFL).toInt()
-    }
 }

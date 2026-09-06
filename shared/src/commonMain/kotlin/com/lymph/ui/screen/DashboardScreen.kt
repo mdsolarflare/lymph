@@ -7,6 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
@@ -16,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.lymph.data.export.DataExporter
+import com.lymph.data.export.DataImporter
+import com.lymph.platform.FilePicker
 import com.lymph.ui.theme.LymphBlack
 import com.lymph.ui.theme.LymphCyan
 import com.lymph.ui.component.BowelPanel
@@ -48,7 +51,8 @@ object DashboardScreen {
 fun DashboardScreenContent(
     viewModel: BiometricViewModel,
     exporter: DataExporter,
-    isExpanded: Boolean
+    isExpanded: Boolean,
+    filePicker: FilePicker? = null // web only for now — import entry points render only where a picker exists
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     var showModal by remember { mutableStateOf(false) }
@@ -67,12 +71,38 @@ fun DashboardScreenContent(
         }
     }
 
+    // Shared import action: opens the platform file chooser, then imports the picked
+    // archive. Best-effort — per-row/per-table problems are counted in the summary;
+    // only structural failures (not a ZIP, corrupt) surface as IMPORT FAILED.
+    val doImport: (() -> Unit)? = filePicker?.let { picker ->
+        {
+            picker.pick { bytes ->
+                if (bytes == null) return@pick // user cancelled the chooser — stay quiet
+                coroutineScope.launch {
+                    try {
+                        val db = viewModel.database
+                        val result = DataImporter.importZip(
+                            zipBytes = bytes,
+                            weightDao = db.weightDao(),
+                            periodDao = db.periodDao(),
+                            bowelDao = db.bowelDao()
+                        )
+                        snackbarHostState.showSnackbar(result.summary())
+                    } catch (e: Exception) {
+                        snackbarHostState.showSnackbar("IMPORT FAILED — ${e.message ?: "unknown"}")
+                    }
+                }
+            }
+        }
+    }
+
     // Mobile uses a drawer; expanded does not need one.
     if (isExpanded) {
         ExpandedLayout(
             viewModel,
             onAddClick = { showModal = true },
             onExportClick = doExport,
+            onImportClick = doImport,
             snackbarHostState = snackbarHostState
         )
     } else {
@@ -87,6 +117,12 @@ fun DashboardScreenContent(
                         DrawerItem(text = "Export Data") {
                             coroutineScope.launch { drawerState.close() }
                             doExport()
+                        }
+                        if (doImport != null) {
+                            DrawerItem(text = "Import Data") {
+                                coroutineScope.launch { drawerState.close() }
+                                doImport.invoke()
+                            }
                         }
                         DrawerItem(text = "Settings") { coroutineScope.launch { drawerState.close() } }
                     }
@@ -170,6 +206,7 @@ private fun ExpandedLayout(
     vm: BiometricViewModel,
     onAddClick: () -> Unit,
     onExportClick: () -> Unit,
+    onImportClick: (() -> Unit)?,
     snackbarHostState: SnackbarHostState
 ) {
     var selected by remember { mutableStateOf(DataType.WEIGHT) }
@@ -205,21 +242,38 @@ private fun ExpandedLayout(
                 Spacer(Modifier.width(8.dp))
                 Text("EXPORT DATA")
             }
+            // Import lives next to export for now — placement is expected to move later.
+            if (onImportClick != null) {
+                Spacer(Modifier.height(4.dp))
+                OutlinedButton(onClick = onImportClick, shape = MaterialTheme.shapes.small) {
+                    Icon(Icons.Default.FileDownload, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("IMPORT DATA")
+                }
+            }
         }
 
         VerticalDivider(modifier = Modifier.fillMaxHeight())
 
         // Detail — exactly one panel at a time, for the selected data type.
+        // Scrollable: chart + paginated table can exceed the viewport height
+        // (e.g. 10 rows + pager on a 900px-tall window) and must not clip.
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
                 .padding(16.dp)
         ) {
-            when (selected) {
-                DataType.WEIGHT -> WeightPanel(vm.weights, onDelete = vm::deleteWeight, modifier = Modifier.fillMaxSize())
-                DataType.PERIOD -> PeriodPanel(vm.periods, onDelete = vm::deletePeriod, modifier = Modifier.fillMaxSize())
-                DataType.BOWEL -> BowelPanel(vm.bowels, onDelete = vm::deleteBowel, modifier = Modifier.fillMaxSize())
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                when (selected) {
+                    DataType.WEIGHT -> WeightPanel(vm.weights, onDelete = vm::deleteWeight, modifier = Modifier.fillMaxWidth())
+                    DataType.PERIOD -> PeriodPanel(vm.periods, onDelete = vm::deletePeriod, modifier = Modifier.fillMaxWidth())
+                    DataType.BOWEL -> BowelPanel(vm.bowels, onDelete = vm::deleteBowel, modifier = Modifier.fillMaxWidth())
+                }
             }
 
             // Snackbar host for export feedback (mobile has its own inside the Scaffold)
