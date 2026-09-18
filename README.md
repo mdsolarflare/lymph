@@ -22,7 +22,7 @@ Lymph is a **100% client-side** Kotlin Multiplatform application. There is no ba
 |--------|--------|---------|---------|
 | Android | `:androidApp` | Native APK, minSdk 24 | SQLite via `SQLiteDatabase` (built into SDK) |
 | iOS | `:shared` → Xcode host | Native via Kotlin/Native | sqlite3 C API (ships with iOS) |
-| Web | `:webApp` | JS (IR) **and** wasmJs, browser-hosted via Compose `ComposeViewport` (Skia canvas in Shadow DOM) | In-memory + ZIP download/export |
+| Web | `:webApp` | JS (IR) **and** wasmJs, browser-hosted via Compose `ComposeViewport` (Skia canvas in Shadow DOM) | `localStorage` CSV persistence + ZIP export/import |
 
 ### Persistence Strategy
 
@@ -53,7 +53,7 @@ A thin `SqlExecutor` interface abstracts the platform-specific SQLite binding:
 |----------|---------|-------|
 | Android | `android.database.sqlite.SQLiteDatabase` | Built into SDK, zero dependencies |
 | iOS | sqlite3 C API via Kotlin/Native interop | Ships with iOS, zero dependencies |
-| Web (JS IR + wasmJs) | `MemoryWeightDao`, etc. (`webMain`) | In-memory `MutableStateFlow` lists; ZIP browser download for persistence |
+| Web (JS IR + wasmJs) | `MemoryWeightDao`, etc. (`webMain`) | In-memory `MutableStateFlow` lists hydrated from `localStorage` CSVs at startup; every mutation re-encodes the table's CSV back to storage. ZIP download/import remains the migration path. |
 
 ```
 lymph/
@@ -71,7 +71,7 @@ lymph/
 │   ├── src/nativeMain/kotlin/       # SqlExecutor impl (NativeSqlExecutor), SQL-backed DAOs
 │   ├── src/androidMain/kotlin/      # AndroidSqlHandle (SQLiteDatabase interop)
 │   ├── src/iosMain/kotlin/          # IosSqlHandle (sqlite3 C API interop)
-│   └── src/webMain/kotlin/          # In-memory DAOs, WebPlatform, browser download helper
+│   └── src/webMain/kotlin/          # localStorage-backed DAOs, WebPlatform, browser download/picker helpers
 │                                    # (shared by both js(IR) and wasmJs targets)
 ├── androidApp/                      # Android Compose UI shell
 │   └── src/main/kotlin/com/lymph/   # MainActivity + platform wiring
@@ -156,7 +156,7 @@ Platform-specific implementations:
 | Platform | Concrete class | Backed by |
 |----------|---------------|-----------|
 | Native (Android/iOS) | `SqlWeightDao` | Real SQLite via `NativeSqlExecutor` |
-| Web (JS IR + wasmJs) | `MemoryWeightDao` (`webMain`) | In-memory `MutableStateFlow` list |
+| Web (JS IR + wasmJs) | `MemoryWeightDao` (`webMain`) | In-memory `MutableStateFlow` list, mirrored to `localStorage` as CSV (schema-identical to export) on every mutation |
 
 A `BiometricViewModel` (expect/actual class) aggregates all three DAOs and exposes reactive state to the UI.
 
@@ -248,7 +248,7 @@ Export is triggered from the drawer menu (mobile) or the EXPORT DATA button in t
 
 ### CSV Import
 
-Import reads a matching ZIP archive, validates schema compatibility, and upserts records by UUID (skipping duplicates). Planned for v0.2.
+Import reads a matching ZIP archive, validates schema compatibility, and inserts records by UUID — **insert-only** semantics (existing UUIDs are skipped; first occurrence wins), with a best-effort snackbar summary. Implemented in `commonMain` (`DataImporter`) with a web-only UI affordance (native file pickers deferred). Full format spec: [`docs/DATA-EXCHANGE.md`](docs/DATA-EXCHANGE.md).
 
 ## Tech Stack
 
@@ -411,11 +411,23 @@ The dev server starts at `http://localhost:8080` by default. Open in any modern 
 
 Also: if a yarn install is interrupted (network drop, killed build), it can corrupt `build/js/node_modules` and the lock state. Recover with `./gradlew clean && ./gradlew kotlinUpgradeYarnLock`, then rebuild.
 
-**Testing:** Standard browser DevTools apply — remember Compose renders to a canvas inside Shadow DOM, so inspect via shadow-piercing tools rather than plain DOM queries. The web target uses an in-memory database — all data is lost on page refresh. Use the export feature (ZIP download) to persist data across sessions during development.
+**Testing:** Standard browser DevTools apply — remember Compose renders to a canvas inside Shadow DOM, so inspect via shadow-piercing tools rather than plain DOM queries. The web target persists tables to `localStorage` (one CSV per table, schema-identical to the export ZIP's) — data survives page refresh. Export/import (ZIP) remains the migration path between browsers/devices.
 
 ## CI/CD
 
 > **Planned.** GitHub Actions workflow will be added once local builds are stable for all three targets. Initial pipeline will run unit tests and verify clean compilation. Distribution (Play Store, TestFlight, static hosting) is a separate effort.
+
+## E2E / UI Testing Bases per Platform (future)
+
+Each target gets its own native E2E harness — there is no single cross-target browser/UI driver. The shared **data logic** (CSV/ZIP encode+decode, insert-only import semantics, schema validation) lives in `commonMain` and is covered by cross-platform `commonTest` unit tests; the per-platform harnesses below are integration layers on top that exercise each platform's real UI + pickers.
+
+| Platform | E2E base | Notes |
+|----------|----------|-------|
+| **Web** (`:webApp`) | **Playwright (Java client)** — the chosen web E2E framework. A raw-CDP `:e2e` prototype exists and is being replaced by it. | Web renders to a Skiko `<canvas>` with no DOM text → assertions use screenshots + OCR, but Playwright drives navigation/clicks/file-upload natively (no hand-rolled WebSocket client). The in-page export hook still uses Playwright's `page.evaluate` (headless Chromium cancels real file writes). See GOAL.md "Session Handoff — Sep 11". |
+| **iOS** (`:iosApp`) | **XCUITest** (Mac/Xcode only) | Driven from Xcode against the simulator/device. Reads the accessibility tree directly (no OCR). Applies once import/export lands on native (currently web-only; `filePicker = null` on native). |
+| **Android** (`:androidApp`) | **Espresso / Compose UI Test** (`createComposeRule`) via adb/emulator | Reads the Compose semantics tree directly (no OCR) — more robust than the web canvas+OCR path. Applies once import/export lands on native. |
+
+> The web `:e2e` scenario (seed → export → verify ZIP structure → reload → import "3 added" → re-import "0 added, 3 duplicates") is portable **as a checklist** to the mobile harnesses even though the driver code is not — reuse the same assertions when building native import.
 
 ## Development Conventions
 

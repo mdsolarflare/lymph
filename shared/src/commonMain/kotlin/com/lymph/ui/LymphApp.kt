@@ -25,8 +25,9 @@ private enum class InitState { LOADING, READY, ERROR }
 /**
  * Root Composable for Lymph.
  *
- * Opens the database asynchronously (required for web to load sql.js from CDN),
- * then creates the ViewModel and renders the dashboard.
+ * Opens the database asynchronously (keeps the startup path uniform across targets),
+ * then creates the ViewModel and renders the dashboard. On web the DAOs hydrate from
+ * localStorage in their constructors (see MemoryWeightDao); open() is a no-op there.
  */
 @Composable
 fun LymphApp(

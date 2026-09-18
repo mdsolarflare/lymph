@@ -309,14 +309,86 @@ Files:
 - CDP driver this session: `/tmp/cdp.mjs` (commands: `nav`, `shot`, `click x y`, `metrics w h`, `wheel x y dy`, `wait ms`) + `/tmp/seed-period.mjs` / `/tmp/seed-bowel.mjs` (mobile 375×812 coordinates). Ephemeral — recreate from the Testing notes if gone.
 - **Desktop (1280×900) E2E coordinates**: sidebar nav WEIGHT/PERIOD/BOWEL ≈ (100, 83/127/171); ADD RECORD button ≈ **(128, 791)** (filled cyan block y≈772–811 — clicks at y>815 miss it); EXPORT DATA text ≈ (73–128, 854). Input modal on desktop is centered: SAVE button center ≈ **(872, 607)**. Range buttons top-right of chart: selected-90D fill bbox x≈1075–1130 y≈73–110; ALL button center ≈ (1220, 91).
 
+## Session Handoff — Sep 11 (web E2E: `:e2e` raw-CDP module; per-platform testing decision)
+
+**What happened this session:**
+- Built a dedicated **`:e2e` Kotlin/JVM module** to drive the web app end-to-end, replacing the throwaway Node CDP scripts. Rationale (user): keep it in-repo and Gradle-native; avoid adding browser-driver dependencies where possible.
+  - `e2e/build.gradle.kts` — `kotlin("jvm")` + kotlinx-serialization plugin, JDK 17 toolchain, JUnit Platform, **gated behind `-Pe2e=true`** (plain builds never spin up a browser). Tool paths (Edge/tesseract/magick) via Gradle property → env var → Windows default.
+  - `Cdp.kt` — minimal CDP client over `java.net.http.WebSocket` (JDK 17, zero WebSocket deps); kotlinx.serialization only deserializes the few fields read (`id`, `result.data`, `backendNodeId`, `nodeId`).
+  - `Ocr.kt` — tesseract TSV word boxes + ImageMagick; banding (page-segmentation drops sparse lines on tall images), 3 preprocessing passes per band (raw / inverted-threshold-55% / grayscale-threshold-60 for the black-on-cyan SAVE button), fuzzy phrase match (OCR mangles words), snackbar-strip reader.
+  - `LymphImportExportTest.kt` — full scenario: hook export → seed weight/period/bowel → verify "70 kg" → capture zip + structural check → reload → import ("3 added") → re-import ("0 added, 3 duplicates").
+- Catalog additions (`libs.versions.toml`): `kotlinx-serialization-json 1.9.0`, `junit-jupiter 5.14.4`, `junit-platform-launcher 1.14.4` (Gradle 9 requires it on the test runtime classpath), serialization plugin alias. `settings.gradle.kts`: `include(":e2e")`.
+
+**Current state of `:e2e`:**
+- ✅ Compiles green (`:e2e:testClasses`). JUnit wiring works (fixed Gradle 9 launcher + `@TestInstance(PER_CLASS)`). CDP connect + small commands work.
+- ✅ **OCR runaway loop fixed & bounded**: the band loop was unbounded and spawned ~12,400 stray PNGs / hung ~40 min; now hard-capped at `y0 < IMG_H` (≤4 iterations) — test finishes in 56s instead of hanging.
+- ⚠️ **BLOCKER (half-fixed): fragmented WebSocket text frames.** A screenshot's base64 spans multiple WS frames; `onText` parses each fragment as complete JSON, fails silently, drops it → `Page.captureScreenshot` times out at 30s. Fix = accumulate into a buffer until `last=true`, then parse. The `textBuffer` field is added but **not yet wired** into `onText`/`handle`. ~6 lines to finish.
+- Export mechanism confirmed via probes: the app produces a real `lymph-export.zip`; **headless Edge cancels the actual disk write** (`downloadWillBegin` fires with a real blob, then state→canceled). So the test hooks `globalThis.__lymphDownload(name, b64)` in-page (via CDP `Runtime.evaluate`) and captures the base64 directly — sidesteps download persistence entirely.
+
+**Per-platform E2E testing decision (documented in README "E2E / UI Testing Bases per Platform"):**
+- **Web**: raw CDP now (`:e2e`), no new deps. Playwright = intended long-term web E2E base, shelved for now (no-new-deps principle + Chrome headless download/security constraints).
+- **iOS**: XCUITest (Mac/Xcode only) — when import lands on native.
+- **Android**: Espresso / Compose UI Test (`createComposeRule`) via adb/emulator — when import lands on native.
+- Shared data logic (CSV/ZIP, insert-only import) is in `commonMain` and already covered by cross-platform `commonTest` unit tests — that's where real cross-target correctness lives; the E2E harnesses are per-platform integration layers on top. Mobile harnesses read the semantics/accessibility tree directly (no OCR).
+
+**Next steps:**
+1. Finish the fragment-buffer fix in `Cdp.kt` (`onText`: append to buffer, parse only when `last=true`, clear after). ~6 lines.
+2. Re-run `:e2e:test -Pe2e=true` **in background** (notify on BUILD SUCCESSFUL/FAILED), poll the test XML — do NOT block a foreground call (a prior 420s timeout did not kill the detached Gradle process, letting it run ~40 min).
+3. Iterate OCR/click-coords if needed until green: seed 3 → "70 kg" visible → zip captured + structurally valid (3 CSVs, headers, rows) → reload → "IMPORT OK — 3 added" → re-import → "0 added, 3 duplicates". Don't call it done before a real green run.
+4. Update AGENTS.md E2E section (user to do): replace the Node/CDP line with "`:e2e` Kotlin/JVM module drives headless Edge via `java.net.http.WebSocket`; run `./gradlew :e2e:test -Pe2e=true` after starting the dev server."
+
+---
+
+## Session Handoff — Sep 12 (Playwright migration DONE; raw CDP removed) — SUPERSEDES Sep 11 next-steps
+
+> **Read this, not the Sep 11 "Next steps" — `Cdp.kt` no longer exists.** The Sep 11 fragment-buffer blocker is obsolete.
+
+- **Raw CDP is gone**: `Cdp.kt` deleted, kotlinx-serialization removed from `libs.versions.toml`. `:e2e` is now a **Playwright (Java client) 1.62.0** driver (`com.microsoft.playwright:playwright` — user-approved dependency) launching **headless Edge** via `LaunchOptions().setChannel("msedge")`, context viewport 1280×900. `e2e.edge` sysprop dropped (channel is hardcoded); tesseract/magick/workdir sysprops remain.
+- **Proven by throwaway DiagTest (since deleted): Playwright's native download interception WORKS** — clicking EXPORT DATA yielded a real 474-byte `lymph-export.zip` via `page.onDownload` + `saveAs`. This **overturns** the raw-CDP-era "headless downloads cancel" finding. The old `__lymphDownload` in-page hook was fundamentally broken anyway: Kotlin/JS IR top-level vals are module-scoped, so the helper is NOT on `globalThis` at page load (`typeof __lymphDownload === 'undefined'`; globals dump shows only skiko/webpack names). Don't retry the hook.
+- Test flow now: OCR-locate (tesseract, unchanged `Ocr.kt`) → `page.mouse().click(x,y)`; export capture = `page.onDownload` latch → `saveAs` → zip structure check; import = `page.onFileChooser` (registered in setUp) + `fc.setFiles(importZipPath)` with the path set before clicking IMPORT DATA.
+- **Current blocker — test bug, ~5-line fix**: `seedRecord()`'s "modal closed when SAVE disappears" poll re-OCRs a **stale screenshot** — `lastShot` is never refreshed inside the loop, so `findPhrase` always sees the pre-click frame → `misses` stays 0 → fails "modal did not close after SAVE (weight): expected: 2 but was: 0" **even if the modal actually closed**. Fix: in that loop, take a fresh `page.screenshot()` into `lastShot` each iteration before the `findPhrase` check. (OCR cache is keyed path+size+mtime, so an overwritten `shot.png` re-OCRs correctly.) Clicks aimed correctly per the run log: ADD RECORD (114,724) — shifted up because the sidebar gained IMPORT DATA; SAVE (873,608) ≈ known-good (872,607).
+- **Acceptance bar for green**: seed 3 records (weight/period/bowel) → "70 kg" visible → EXPORT DATA → zip captured + 3 CSVs w/ headers + ≥1 row → "EXPORT OK" snackbar → `page.reload()` → IMPORT DATA → "3 added" → re-import → "0 added, 3 duplicates" → "70 kg" still visible.
+- **Run**: dev server on :8080 first (`./gradlew :webApp:jsBrowserDevelopmentRun --no-daemon`, background, poll curl), then `./gradlew :e2e:test -Pe2e=true --no-daemon` (~60–90s). Results: `e2e/build/test-results/test/*.xml`; screenshots + captured zip in `e2e/build/e2e/`. A benign console 404 appears on every app load — ignore it.
+- **Playwright API quirks hit (Kotlin)**: `setTimeout` takes `Double`; it's `onConsoleMessage` (not `onConsole`); `Response.url()` is a method; `saveAs` wants `java.nio.file.Path`; a bare `fail(...)` statement inside an if-block triggers "Cannot infer type for V" — use `throw AssertionError(...)`. **Terminal tool**: `notify` requires `background: true` in the same call; long gradle runs should be backgrounded (a timed-out foreground call once left the child gradle running ~40 min).
+- Playwright's managed browsers are already at `~/.cache/ms-playwright`; the test uses installed Edge via channel, not those. No `playwright install` needed.
+- Docs current: README (insert-only import semantics; per-platform E2E table — web=Playwright, iOS=XCUITest, Android=Espresso/Compose UI Test). **AGENTS.md still describes the old Node/CDP E2E — the user updates AGENTS.md themselves** (agent writes to it are blocked); hand them the replacement lines when green.
+
+---
+
+## Session Handoff — Sep 17 (`:e2e` import/export round-trip GREEN)
+
+> The full web E2E scenario is **green, twice** (once alongside the diagnostic, once standalone after deleting it): seed → "70 kg" → EXPORT → real zip + structure check → "EXPORT OK" → reload → IMPORT → "3 added" → re-import → "0 added, 3 duplicates" → "70 kg" still visible. `./gradlew :e2e:test -Pe2e=true --no-daemon` → BUILD SUCCESSFUL (~1m45s).
+
+**Bugs fixed this session (all in the test harness, no app changes):**
+
+1. **Stale-screenshot poll (Sep 12's known blocker)** — `seedRecord()`'s modal-closed loop now refreshes `lastShot` + re-screenshots every iteration.
+2. **"70 kg" exact-substring assert too strict** — OCR mangles the row ("70kq70Tokg"); switched `ocrTextContains` to the fuzzy `findPhrase` matcher.
+3. **M3 dark snackbar was invisible to OCR** — the snackbar renders as a LIGHT #E6E0E9 inverseSurface floating bottom-center of the detail area; psm-6 page segmentation over a full-width strip drops it entirely. `Ocr.snackbarText` rewritten: exact-color bbox via `magick %@` → tight crop → 2× upscale → fuzz-fill surface to white-on-black → tesseract. Verified to read `EXPORT OK — zip generated` and `IMPORT OK — 0 added, 3 duplicates` perfectly on captured frames.
+4. **`tsvText` word order** — a global y-sort interleaved words within one line ("0 3 added, duplicates"); now groups lines by y-proximity THEN x-sorts within each line.
+5. **Silent `FileChooser.setFiles` failure on the 2nd chooser** — chooser fired but no change event reached the app (no import, no snackbar). Import delivery now goes through `page.setInputFiles("#__lymph_file_input", …)` (the app's hidden input is light-DOM with a known id); the chooser event is kept as click-landed detection only.
+6. **Swallowed first clicks (recurring flake)** — Compose-on-canvas occasionally drops a click at verified-correct coordinates (3× observed, always the 1st click after an idle poll); `clickPhraseUntil` re-locates from a fresh screenshot and re-clicks (3 attempts) until the expected event (download / chooser) fires. In the final green runs every retry WARN was click #1 → click #2 landing.
+7. **Regex hygiene** — `EXPORT\s+OK` can never match OCR output with no separator (`EXPORTOK`); snackbars are matched with `\s*` + IGNORE_CASE, and OCR newlines are normalized to spaces.
+
+**`Ocr.kt` preprocessing pass leak plugged** — `wordsForBand` now deletes each generated `pre-*.png` (a run previously leaked ~200 files into `e2e/build/e2e/`).
+
+**Diagnostics playbook that got there (for future sessions):** don't theorize about swallowed clicks/silent snackbars — write a throwaway DiagTest mirroring the failing sequence with (a) event timestamps (`System.nanoTime()`), (b) rapid-fire raw screenshots during the poll window (NO OCR in the timing loop — it eats ~2s/poll and misses the ~4s snackbar), (c) offline OCR of the captured frames afterwards. Pixel-histogram analysis (`magick histogram:info:`) identified the #E6E0E9 snackbar surface when OCR saw nothing; `magick %@` bbox located it at 624×48+449+816 (bottom-center of the detail area, x 449–1073 — NOT in the sidebar strip the old reader assumed).
+
+**AGENTS.md replacement lines (user to apply — agent writes blocked):**
+- Web E2E line → **"`:e2e` Kotlin/JVM module drives headless Edge via Playwright (Java client) + OCR (tesseract/ImageMagick). Run `./gradlew :e2e:test -Pe2e=true --no-daemon` after starting the dev server on :8080. Green scenario: seed 3 → export zip → reload → import "3 added" → re-import "0 added, 3 duplicates"."**
+- Delete the CDP launch/`Browser.setDownloadBehavior`/file-chooser-via-CDP gotchas; keep the OCR-phrase (not full-line) + expected-snackbar-strings notes; add: "snackbar = light #E6E0E9 box bottom-center of the DETAIL area — read with `Ocr.snackbarText` (bbox+crop+2×), not a bottom strip"; add: "first click after an idle poll can be swallowed — use `clickPhraseUntil`".
+
+---
+
 ## Current State (checkpoint)
 
 The web portal is **ugly but working end-to-end** — that's the agreed v0.1 bar:
 
 - Mobile: dashboard, drawer (Export Data / Settings), FAB → input modal, reactive panels, real ZIP download.
-- Desktop (>840dp): sidebar with ADD RECORD + EXPORT DATA, single-panel detail area driven by selectable WEIGHT/PERIOD/BOWEL nav (inverted-cyan highlight), snackbar feedback. Detail column scrolls when content exceeds the viewport (pager no longer clips).
+- Desktop (>840dp): sidebar with ADD RECORD + EXPORT DATA + IMPORT DATA, single-panel detail area driven by selectable WEIGHT/PERIOD/BOWEL nav (inverted-cyan highlight), snackbar feedback. Detail column scrolls when content exceeds the viewport (pager no longer clips).
 - Weight entry: KG/LB unit toggle, integer-hundredths precision (no float drift), ≤2 decimal places; canonical kg storage. Verified end-to-end via CDP: 70 → +4×0.1 → dial "70.4" → CSV `70.4`; LB round-trip 70kg → 154.32lb → +0.1 → 154.42lb → CSV `70.04` kg.
 - **All three panels** have a trend chart with `[90D] [1Y] [ALL]` range selector above a paginated table (10/page, `[ n/N ]` pager): WEIGHT single cyan line; PERIOD two lines (duration + flow); BOWEL two lines (Bristol + effort) — cyan/amber pair. Unit-tested (`ChartModelTest`, 14/14 via `:shared:jsNodeTest`) and passed an agent-driven E2E pass, but **marked incomplete & unverified at the user's request** — they will verify these sections themselves.
+- **Web E2E (`:e2e`) is GREEN end-to-end** — the seed→export→reload→import→re-import round trip passes as a real Gradle test (Sep 17 section above).
+- **Web persistence (Sep 18): localStorage CSV mirror** — the refresh-loses-data regression is FIXED and E2E-guarded. Each `Memory*Dao` hydrates from `localStorage` at construction and re-encodes its table on every insert/delete via `WebTableStore` + `CsvEncoder`/`CsvDecoder` (one format for storage, export, and import). New files: `shared/src/webMain/.../platform/LocalStorage.kt` (raw-`js()` interop, same pattern as `BrowserDownload`, wasmJs-safe) + `shared/src/webMain/.../data/dao/WebTableStore.kt`. Verified: both web targets compile; E2E now asserts data SURVIVES `page.reload()` (seeded "70 kg" still visible), and the import scenario clears storage first (`window.localStorage.clear()` via `page.evaluate`) for its fresh-DB step — full suite green; 48/48 unit tests unchanged.
 - Both web targets compile; JS IR is the runtime-verified path.
 
-Next up (in progress): **v0.2 CSV import** — `CsvDecoder` + `ZipDecoder` + `DataImporter` in commonMain, web file-picker interop, IMPORT DATA UI on web only (native pickers deferred). Full format docs land in `docs/DATA-EXCHANGE.md`. Priority 2 Android runtime test still pending on a machine with an SDK/emulator.
+Remaining backlog: Priority 2 Android runtime test (needs emulator/device), CI/CD pipeline, Settings drawer action, iOS Xcode host project.
