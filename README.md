@@ -14,7 +14,7 @@ Offline-first biometric data sanctuary. Zero servers. Zero telemetry. Your body'
 
 ## Architecture
 
-Lymph is a **100% client-side** Kotlin Multiplatform application. There is no backend, no cloud sync service, and no network calls. All data persists locally via raw SQLite on native targets — hand-written SQL, no ORM. Cross-device portability is achieved through explicit CSV export/import — you own the migration path.
+Lymph is a **100% client-side** Kotlin Multiplatform application. There is no backend, no cloud sync service, and no network calls. Data persists locally via raw SQLite on native targets (hand-written SQL, no ORM) and via `localStorage` CSV mirroring on web. Cross-device portability is achieved through explicit CSV export/import — you own the migration path.
 
 ### Targets
 
@@ -52,7 +52,7 @@ A thin `SqlExecutor` interface abstracts the platform-specific SQLite binding:
 | Platform | Binding | Layer |
 |----------|---------|-------|
 | Android | `android.database.sqlite.SQLiteDatabase` | Built into SDK, zero dependencies |
-| iOS | sqlite3 C API via Kotlin/Native interop | Ships with iOS, zero dependencies |
+| iOS | sqlite3 C API via Kotlin/Native interop | Ships with iOS, zero dependencies — **implementation exists in `shared/src/iosMain` but is NOT in the iOS compile path** (see GOAL.md "Next Goal") |
 | Web (JS IR + wasmJs) | `MemoryWeightDao`, etc. (`webMain`) | In-memory `MutableStateFlow` lists hydrated from `localStorage` CSVs at startup; every mutation re-encodes the table's CSV back to storage. ZIP download/import remains the migration path. |
 
 ```
@@ -388,6 +388,8 @@ The `:shared` module produces an XCFramework consumable by an Xcode host project
 
 **Testing:** Use the iOS Simulator (iPhone 15 / latest iOS recommended) for local development. Deploy to physical iPhones via Xcode for real-device validation. An Xcode host project is planned as a follow-up module.
 
+> **State warning (Sep 18):** the iOS sources are currently **unwired** — `gradle.properties` sets `kotlin.mpp.applyDefaultHierarchyTemplate=false`, and no `iosMain` source set is declared in `:iosApp` or bridged in `:shared`, so `:iosApp` compiles **NO-SOURCE** and `shared/src/iosMain/**` (including the real sqlite3 implementation and `MainViewController`) is dead code. Framework linking additionally requires macOS + Xcode. See GOAL.md "★ Next Goal" for the resume plan.
+
 ### Web
 
 ```bash
@@ -423,7 +425,7 @@ Each target gets its own native E2E harness — there is no single cross-target 
 
 | Platform | E2E base | Notes |
 |----------|----------|-------|
-| **Web** (`:webApp`) | **Playwright (Java client)** — the chosen web E2E framework. A raw-CDP `:e2e` prototype exists and is being replaced by it. | Web renders to a Skiko `<canvas>` with no DOM text → assertions use screenshots + OCR, but Playwright drives navigation/clicks/file-upload natively (no hand-rolled WebSocket client). The in-page export hook still uses Playwright's `page.evaluate` (headless Chromium cancels real file writes). See GOAL.md "Session Handoff — Sep 11". |
+| **Web** (`:webApp`) | **Playwright (Java client)** — shipped and GREEN (`:e2e` module, gated behind `-Pe2e=true`). | Web renders to a Skiko `<canvas>` with no DOM text → assertions use screenshots + OCR (tesseract/ImageMagick), while Playwright drives navigation/clicks/downloads/file-upload natively. Scenario: seed 3 → export ZIP → reload (data survives, localStorage) → import "3 added" → re-import "0 added, 3 duplicates". See GOAL.md "Session Handoff — Sep 17/18". |
 | **iOS** (`:iosApp`) | **XCUITest** (Mac/Xcode only) | Driven from Xcode against the simulator/device. Reads the accessibility tree directly (no OCR). Applies once import/export lands on native (currently web-only; `filePicker = null` on native). |
 | **Android** (`:androidApp`) | **Espresso / Compose UI Test** (`createComposeRule`) via adb/emulator | Reads the Compose semantics tree directly (no OCR) — more robust than the web canvas+OCR path. Applies once import/export lands on native. |
 
@@ -445,11 +447,11 @@ Rules Established:
 2. **Avoid overriding defined versions from dependencies** - let version catalog manage compatibility. If you run into a version conflict, you must ask the user how we should resolve it.
 3. **Stick with idiomatic Kotlin** - no unnecessary complexity
 4. **Use `./gradlew`** for builds (not system gradle), you may need to provide the JAVA_HOME and GRADLE_HOME locations
-5. **Reference `example-kmp-app/` as a strong working template** - it is a working template project that you can reference for compatibility and scaffolding.
-6. **Do not edit `example-kmp-app`**
+5. **`example-kmp-app/` was deleted (Sep 17)** — treat the lymph repo itself as the reference for compatibility and scaffolding questions. (Older rule: reference `example-kmp-app/` as a working template.)
+6. ~~Do not edit `example-kmp-app`~~ — obsolete; the folder was deleted (Sep 17).
 7. **Use Gradle tasks for all build and cleanup operations** — never use `rmdir`, `rm -rf`, or manual directory deletion. Use `./gradlew clean` instead of deleting the `build/` directory manually.
 8. **Project requires JDK 17 toolchain.** AGP 9.x compiles against JDK 17 specifically. Never change `jvmToolchain(17)` in build files. On Windows, set `JAVA_HOME` to a JDK 17 path before running Gradle if the default JDK is not version 17.
-9. **Gradle 9.x API constraints.** Do not use deprecated Gradle APIs (`toolchainManagement.jvm.repositories {}`, `by creating`). When in doubt about an API, check `example-kmp-app/` or test with a clean build first.
+9. **Gradle 9.x API constraints.** Do not use deprecated Gradle APIs (`toolchainManagement.jvm.repositories {}`, `by creating`). When in doubt about an API, test with a clean build first.
 10. **Android SDK types.** Use `SQLiteStatement` (from `android.database.sqlite.SQLiteStatement`), not `SQLiteDatabase.Statement`. Android bind methods take `Int` index, not `Long`.
 11. **Nullable Boolean comparisons.** Never use `!nullable?.exists()` — Kotlin won't allow negating a nullable Boolean. Use `!= true` instead: `if (dbFile.parentFile?.exists() != true) { ... }`.
 12. **String template method calls** must use braces: `${methodCall()}` not `$methodCall()`.

@@ -6,13 +6,34 @@
 
 1. Set `JAVA_HOME` to a **JDK 17** path before running Gradle (AGP 9.x requires JDK 17 compile target). On Windows:
    ```bash
-   export JAVA_HOME="/c/Program Files/Eclipse Adoptium/jdk-17.0.x+xx"
+   export JAVA_HOME="/c/Program Files/Microsoft/jdk-17.0.20.8-hotspot"
    ./gradlew :webApp:jsBrowserDevelopmentRun
    ```
 2. Use `./gradlew clean` for cleanup — **never** `rmdir` / `rm -rf`.
-3. Reference `example-kmp-app/` as a working template (do not edit it).
-4. **Unit tests**: `./gradlew :shared:jsNodeTest` (runs commonTest on Node — the only test runner available in this container; no Android SDK). On a machine with an Android SDK, `:shared:testAndroid` also works (`withHostTest {}` is configured).
-5. **Yarn lock**: if a build fails with "Lock file was changed" (happens after any change to JS-target dependencies, e.g. the `nodejs()` test env added Aug 27), run `./gradlew kotlinUpgradeYarnLock` once, then rebuild. Same recovery as a fresh checkout (`kotlin-js-store/` is gitignored by user choice).
+3. `example-kmp-app/` was **deleted (Sep 17)** — the lymph repo itself is the working reference now.
+4. **Unit tests**: `./gradlew :shared:jsNodeTest` (runs commonTest on Node — works on Windows and in containers; no Android SDK needed). On a machine with an Android SDK, `:shared:testAndroid` also works (`withHostTest {}` is configured). Baseline **48/48** (CsvDecoder 18 + DataImporter 10 + ZipDecoder 6 + ChartModel 14).
+5. **Yarn lock**: if a build fails with "Lock file was changed" (happens after any change to JS-target dependencies), run `./gradlew kotlinUpgradeYarnLock` once, then rebuild. Same recovery as a fresh checkout (`kotlin-js-store/` is gitignored by user choice).
+6. **Web E2E**: dev server on :8080 first, then `./gradlew :e2e:test -Pe2e=true --no-daemon` (~2min, needs Edge + tesseract + ImageMagick — all present on the Windows host; see AGENTS.md E2E section).
+
+---
+
+## ★ Next Goal — Mobile Apps in Their Native Setups (defined Sep 18, work paused before starting)
+
+The project is paused after the web milestone (`:e2e` round-trip GREEN + localStorage persistence). **When work resumes, the next milestone is making Android and iOS real, runnable native apps.** Verified state at pause — read this before trusting older notes below:
+
+**Android (`:androidApp`) — closest to done, needs a runtime test:**
+- Debug APK compiled in earlier sessions (not re-verified this session); needs an Android SDK + emulator/device, which this Windows dev machine lacks.
+- Real SQLite path exists and is wired: `AndroidSqlHandle` (`SQLiteDatabase`), SQL-backed DAOs in `nativeMain`, `AndroidDataExporter` (java.util.zip), `MainActivity` → `LymphApp`.
+- Import UI is hidden on native (`filePicker = null`) — native pickers are follow-up work after the app actually runs.
+- Suggested resume order: install SDK/emulator → `assembleDebug` → runtime-verify dashboard/add/delete + SQLite persistence **across an app restart** (the same regression class as the web refresh bug) → then native export → then import picker.
+
+**iOS (`:iosApp` + shared ios sources) — NOT actually built; do not trust "MainViewController ready" in older notes:**
+- Verified Sep 18 from Windows: `:iosApp:compileKotlinIosSimulatorArm64` → **NO-SOURCE**. With `kotlin.mpp.applyDefaultHierarchyTemplate=false` (gradle.properties) and no `iosMain` source set declared in `:iosApp`, the entire `iosApp/src/iosMain/**` tree — including the entry point `MainViewController.kt` — is **dead code, never compiled**.
+- Same trap in `:shared`: `iosArm64Main`/`iosSimulatorArm64Main` are wired directly to `nativeMain` (`shared/build.gradle.kts`), so `shared/src/iosMain/**` (`PlatformContext.ios.kt`, `IosDataExporter.kt`, and `IosSqlHandle.kt` — the full sqlite3 C-API implementation) is **also unreachable**. What actually compiles for iOS today is the `TODO("Not yet implemented")` `platformOpen` stubs in `iosArm64Main`/`iosSimulatorArm64Main` — i.e. the framework would crash on first DB open.
+- Fix when resuming: wire the `iosMain` source sets in both modules (re-enable the hierarchy template, or declare `iosMain` + `dependsOn` explicitly), delete the TODO stubs in favor of the real `iosMain` implementation, then verify with `:shared:compileKotlinIosSimulatorArm64` + `:iosApp:compileKotlinIosSimulatorArm64`. **Both compile from Windows** (verified) — only framework linking/running needs macOS + Xcode. Then: Xcode host project consuming the `shared` XCFramework → simulator run.
+- Kotlin/Native compilation from Windows works (`:shared:compileKotlinIosSimulatorArm64` → BUILD SUCCESSFUL in 18s, Sep 18).
+
+**Suggested resume order:** 1) Android (no Mac required) → 2) iOS source-set wiring + Xcode host on a Mac → 3) portable E2E checklist from README "E2E / UI Testing Bases per Platform" for native assertions (semantics-tree based, no OCR needed on mobile).
 
 ---
 
@@ -20,9 +41,9 @@
 
 | Target | Compiles? | Tested in runtime? | Notes |
 |--------|-----------|---------------------|-------|
-| **Web** (`:webApp`) | ✅ Yes (JS IR + wasmJs) | ✅ JS IR — headless Chromium via CDP (see Priority 1 log); wasmJs compiles but not yet run | Full app verified on JS IR: ComposeViewport, drawer, input modal, reactive panels, real ZIP browser download |
-| **Android** (`:androidApp`) | ✅ Yes (debug APK) | ❌ Needs emulator/device test | MainActivity wired to LymphApp, SQLite via SQLiteDatabase |
-| **iOS** (`:iosApp`) | ⚠️ Compiles on macOS only | ❌ Requires Mac + Xcode | MainViewController ready; no Xcode host project yet |
+| **Web** (`:webApp`) | ✅ Yes (JS IR + wasmJs) | ✅ JS IR — `:e2e` Playwright suite GREEN (Sep 17–18): seed → export → reload (data survives) → import → re-import; wasmJs compiles but not yet run | localStorage persistence shipped Sep 18; E2E asserts reload-survival |
+| **Android** (`:androidApp`) | ✅ Yes (debug APK, earlier sessions) | ❌ Needs emulator/device test | MainActivity wired to LymphApp, SQLite via SQLiteDatabase |
+| **iOS** (`:iosApp` + shared) | ⚠️ Misleading — `:shared` iOS targets compile, but only TODO stubs; `:iosApp` sources are dead code (NO-SOURCE) | ❌ Requires Mac + Xcode **and** source-set wiring first | See "Next Goal" above — the real implementation in `shared/src/iosMain` is unreachable |
 
 ---
 
