@@ -1,6 +1,44 @@
 # Lymph — Status & Next Steps
 
 > This file is the canonical session-context document (renamed from `TODO.md` on Aug 27, user-managed rename). Update it at the end of every session; read it at the start.
+>
+> **⚠️ v2 REBOOT (Sep 29–Oct 1): Gradle + Kotlin are ABANDONED.** The project is now a **Rust core (WASM) + Deno/TypeScript/Preact frontend**. Product contract: [`docs/SPEC.md`](docs/SPEC.md). The Kotlin tree (`shared/`, `androidApp/`, `webApp/`, `e2e/`, Gradle files) still exists ONLY as the behavioral reference for the port — it is dead code pending one-shot deletion at v2 parity. Nothing in it compiles into v2. All v2 verification below is REAL executed output.
+
+## v2 verification status (all executed, Oct 1)
+
+- **Rust core** (`core/crates/lymph-core`): **60/60 tests green** (`cargo test`), clippy clean, `wasm32-unknown-unknown` compiles, wasm-pack artifact builds. Tests = the 48-test Kotlin baseline ported 1:1 + 12 new (CRC vectors, lb↔kg round-trip, Java-Double-toString parity, ZIP truncation fuzz).
+- **Frontend** (`frontend/`): `deno check` 0 errors; `deno task build` → `dist/` (app.js ~83KB + wasm 147KB + css + index.html).
+- **E2E round trip GREEN** (real browser, DOM queries — no OCR): seed weight+period+bowel via the modal → reload (data survives localStorage) → EXPORT (snackbar exact, real ZIP structurally verified: 3 CSVs, exact headers, 1 data row each, EOCD ok) → wipe → IMPORT (`IMPORT OK — 3 added`) → re-import (`IMPORT OK — 0 added, 3 duplicates`) → data intact. Weight entry verified: defaults 70 kg valid, modal closes on save, CSV stores `70.0`.
+- **Chart refresh fix (Oct 1)**: geometry derived at render time in `chart.tsx` (was a `useSignalEffect` that ignored prop changes — chart froze after insert/import). Verified: insert 1→2→3 records moves polyline/markers live; import into wiped DB renders immediately; range toggle re-derives.
+- **PWA — M2 GREEN (Oct 1, taskman-consistent)**: manifest.webmanifest (relative paths, standalone, #111111), sw.js (zero-dep cache-first shell, BUILD_ID stamped by gen-revision.ts — the load-bearing Chromium byte-compare rule), gen-revision.ts (SHA-256 over 10 shell files → cache-manifest.js + sw stamp), registration with `updateViaCache: "none"`, `usePWA` port (install prompt + update toast + SKIP_WAITING/controllerchange reload-guard), icons (headless-Edge canvas raster of favicon.svg: 192/512/512-maskable/apple-touch).
+  - **Verified live**: SW installs + controls page; precache = 11 entries (10 files + `./`); **true-offline load GREEN** (CDP Network.emulateNetworkConditions offline → full app renders from cache); **full update cycle GREEN on a live controlled page** (rebuild mid-session → updatefound → toast → RELOAD click → new build active → old caches deleted, exactly 1 shell cache remains); content-addressing confirmed (identical source → identical buildId).
+- Storage: localStorage CSV mirror, **same keys as Kotlin app** (`lymph.weight_records` etc.) — existing browser data inherits itself, zero migration code.
+
+## v2 build & run (Windows host)
+
+```bash
+# Rust core: test + wasm artifact (wasm32-unknown-unknown target must be installed)
+cd core && cargo test && cargo clippy --all-targets
+wasm-pack build crates/lymph-core --target web --out-dir ../../pkg --release
+
+# Frontend: type-check, bundle, serve (deno at C:\Users\dalton\.deno\bin\deno.exe — NOT on PATH)
+cd ../frontend
+deno check src/main.tsx src/app.tsx src/chart.tsx src/panel.tsx src/input-modal.tsx src/store.ts src/io.ts src/format.ts src/lymph-core.ts build.ts serve.ts
+deno task build
+deno run --allow-read --allow-net serve.ts dist 8080   # → http://localhost:8080/
+```
+
+## v2 known-shape / debt (honest list)
+
+- The import-export E2E lives only in session history — it is NOT yet a persisted test file (next milestone: `frontend/e2e/` as a Deno test, mirroring taskman's raw-CDP harness).
+- `InputModal` "flow intensity" selector is dials 1–4, matching Kotlin, but the UI label just says "flow" — fine, just noting parity.
+- The Hermes browser harness (browser_exec) on this host wedges (`WinError 5` on `.port`/`.pid` files) at turn boundaries — new session names work around it; it is an environment issue, not an app issue.
+- Mobile layout (`≤840dp`) is implemented (topbar/drawer/FAB/stacked panels) but only the desktop layout was E2E-driven so far.
+- ~~PWA (manifest + service worker + offline)~~ ✅ **DONE Oct 1** (see verification section). Android TWA, Apple roadmap: NOT STARTED — milestone M3 per SPEC §2.
+- Update-UX nuance: because the harness kills tabs between calls, a fresh tab always loads the newest build directly (no controller → no waiting → no toast); the toast/update path only triggers on a **live controlled page** — verified by rebuilding mid-session. Real users with an installed PWA are always controlled, so they get the toast.
+
+## Historical Kotlin-era content below — reference only for the port, not active goals
+
 
 ## Quick Start for Next Agent
 

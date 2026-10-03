@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "strict": true
+  },
+  "exclude": ["dist/"],
+  "imports": {
+    "preact": "npm:preact@10.26.9",
+    "preact/": "npm:/preact@10.26.9/",
+    "@preact/signals": "npm:@preact/signals@1.3.1",
+    "lymph-core": "./src/lymph-core.ts"
+  },
+  "tasks": {
+    "build": "deno run --allow-read --allow-write --allow-run build.ts",
+    "check": "deno check",
+    "gen-icons": "deno run --allow-read --allow-write --allow-net --allow-run --allow-env gen-icons.ts",
+    "serve": "deno run --allow-read --allow-net serve.ts",
+    "dev": "deno task build && deno task serve",
+    "test": "deno test"
+  }
+}

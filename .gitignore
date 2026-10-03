@@ -38,3 +38,13 @@ build
 local.properties
 
 kotlin-js-store
+
+# ── v2 reboot (Rust core + Deno/Preact frontend) ────────────────────────────
+# Rust build artifacts
+core/target/
+# wasm-pack output — rebuild with:
+#   wasm-pack build core/crates/lymph-core --target web --out-dir ../../pkg --release
+core/pkg/
+# Deno frontend bundle output
+frontend/dist/
+
