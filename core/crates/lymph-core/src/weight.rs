@@ -15,7 +15,7 @@ pub use crate::entity::ranges::{MAX_WEIGHT_KG, MIN_WEIGHT_KG};
 /// Kotlin `Double.roundToLong()` rounds ties **towards positive infinity**
 /// (2.5 -> 3, -2.5 -> -2). Rust's `f64::round()` rounds ties away from zero,
 /// so the rule is written out explicitly to keep ported behavior identical.
-fn kotlin_round_to_long(v: f64) -> i64 {
+pub(crate) fn kotlin_round_to_long(v: f64) -> i64 {
     let floor = v.floor();
     let diff = v - floor;
     if diff >= 0.5 {

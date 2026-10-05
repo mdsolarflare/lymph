@@ -29,6 +29,12 @@ export interface BowelRecord {
   effortLevel: number;
   note: string | null;
 }
+export interface HydrateRecord {
+  id: string;
+  timestamp: number;
+  volumeMl: number;
+  note: string | null;
+}
 export interface DecodedTable<T> {
   records: T[];
   invalidRows: number;
@@ -43,6 +49,7 @@ export interface ImportResult {
   weight: TableImport;
   period: TableImport;
   bowel: TableImport;
+  hydrate: TableImport;
 }
 export interface ImportOutcome {
   result: ImportResult;
@@ -51,6 +58,7 @@ export interface ImportOutcome {
   weightToInsert: WeightRecord[];
   periodToInsert: PeriodRecord[];
   bowelToInsert: BowelRecord[];
+  hydrateToInsert: HydrateRecord[];
 }
 export interface WeightCheck {
   valid: boolean;
@@ -79,15 +87,18 @@ export const init = rawInit as (moduleOrPath?: string | URL | WebAssembly.Module
 export const encodeWeightCsv = raw.encodeWeightCsv as (records: WeightRecord[]) => string;
 export const encodePeriodCsv = raw.encodePeriodCsv as (records: PeriodRecord[]) => string;
 export const encodeBowelCsv = raw.encodeBowelCsv as (records: BowelRecord[]) => string;
+export const encodeHydrateCsv = raw.encodeHydrateCsv as (records: HydrateRecord[]) => string;
 
 export const decodeWeightCsv = raw.decodeWeightCsv as (csvText: string) => DecodedTable<WeightRecord>;
 export const decodePeriodCsv = raw.decodePeriodCsv as (csvText: string) => DecodedTable<PeriodRecord>;
 export const decodeBowelCsv = raw.decodeBowelCsv as (csvText: string) => DecodedTable<BowelRecord>;
+export const decodeHydrateCsv = raw.decodeHydrateCsv as (csvText: string) => DecodedTable<HydrateRecord>;
 
 export const buildExportZip = raw.buildExportZip as (
   weights: WeightRecord[],
   periods: PeriodRecord[],
   bowels: BowelRecord[],
+  hydrates: HydrateRecord[],
 ) => Uint8Array;
 
 export const importZip = raw.importZip as (
@@ -95,6 +106,7 @@ export const importZip = raw.importZip as (
   weightExistingIds: string[],
   periodExistingIds: string[],
   bowelExistingIds: string[],
+  hydrateExistingIds: string[],
 ) => ImportOutcome;
 
 export const parseHundredths = raw.parseHundredths as (text: string) => number | undefined;
@@ -105,6 +117,20 @@ export const checkWeight = raw.checkWeight as (
 ) => WeightCheck;
 export const hundredthsLbToKg = raw.hundredthsLbToKg as (hundredthsLb: number) => number;
 export const kgToHundredthsLb = raw.kgToHundredthsLb as (weightKg: number) => number;
+
+export interface VolumeCheck {
+  valid: boolean;
+  canonicalMl: number;
+}
+export const checkVolume = raw.checkVolume as (
+  typedHundredths: number,
+  unitIsL: boolean,
+) => VolumeCheck;
+export const hundredthsLToMl = raw.hundredthsLToMl as (hundredthsL: number) => number;
+export const hundredthsOzToMl = raw.hundredthsOzToMl as (hundredthsOz: number) => number;
+export const mlToHundredthsL = raw.mlToHundredthsL as (ml: number) => number;
+export const mlToHundredthsOz = raw.mlToHundredthsOz as (ml: number) => number;
+export const formatVolumeMl = raw.formatVolumeMl as (ml: number) => string;
 
 export const cutoffMillis = raw.cutoffMillis as (
   label: string,
@@ -117,3 +143,12 @@ export const mapMultiSeries = raw.mapMultiSeries as (
 ) => MultiSeries | undefined;
 
 export const formatIntegerTick = raw.formatIntegerTick as (v: number) => string;
+
+/** UI-only: qualitative flow label for the stored 1-4 intensity (NONE/LIGHT/MEDIUM/HEAVY). */
+export const flowIntensityLabel = raw.flowIntensityLabel as (v: number) => string;
+
+/** UI-only: qualitative bristol-like label for the stored 1-5 type. */
+export const bristolLabel = raw.bristolLabel as (v: number) => string;
+
+/** UI-only: qualitative effort label for the stored 1-3 level. */
+export const effortLabel = raw.effortLabel as (v: number) => string;

@@ -3,16 +3,16 @@
 // hidden file input.
 
 import { useSignal } from "@preact/signals";
-import { formatIntegerTick, formatWeight } from "lymph-core";
+import { bristolLabel, effortLabel, flowIntensityLabel, formatIntegerTick, formatVolumeMl, formatWeight } from "lymph-core";
 import { useEffect } from "preact/hooks";
 import type { VNode } from "preact";
 import { TrendChart } from "./chart.tsx";
 import { exportZip, importFromFile } from "./io.ts";
 import { InputModal } from "./input-modal.tsx";
-import { formatDate, formatTimestamp, nowMillis } from "./format.ts";
+import { formatTimestamp, nowMillis } from "./format.ts";
 import { usePWA } from "./pwa.ts";
 import { Panel } from "./panel.tsx";
-import { bowels, deleteBowel, deletePeriod, deleteWeight, periods, theme, weights } from "./store.ts";
+import { bowels, deleteBowel, deleteHydrate, deletePeriod, deleteWeight, hydrates, periods, theme, weights } from "./store.ts";
 
 const BREAKPOINT = 840; // dp — same as the Kotlin LayoutStrategy
 
@@ -24,7 +24,7 @@ export function App() {
   const modalOpen = useSignal(false);
   const drawerOpen = useSignal(false);
   const snackbar = useSignal<Snackbar>(null);
-  const selected = useSignal<"weight" | "period" | "bowel">("weight");
+  const selected = useSignal<"weight" | "period" | "bowel" | "hydrate">("weight");
   const isDesktop = useSignal(window.innerWidth > BREAKPOINT);
   useEffect(() => {
     const onResize = () => {
@@ -85,6 +85,10 @@ export function App() {
       arr.map((r) => ({ t: r.timestamp, v: r.effortLevel })),
     ];
   };
+  const hydrateSamples = () => {
+    const arr = [...hydrates.value].sort((a, b) => a.timestamp - b.timestamp);
+    return [arr.map((r) => ({ t: r.timestamp, v: r.volumeMl }))];
+  };
 
   const weightPanel = (
     <Panel
@@ -108,10 +112,10 @@ export function App() {
       chart={
         <TrendChart samples={periodSamples()} minTickStep={1}
           formatTick={formatIntegerTick} now={now}
-          legend={["DURATION (days)", "FLOW [1-4]"]} />
+          legend={["DAYS", "FLOW"]} />
       }
-      columns={["id", "date", "duration", "flow", "symptoms"]}
-      row={(r) => [r.id.slice(0, 8), formatTimestamp(r.timestamp), String(r.durationDays), String(r.flowIntensity), r.symptoms ?? ""]}
+      columns={["id", "date", "days", "flow", "symptoms"]}
+      row={(r) => [r.id.slice(0, 8), formatTimestamp(r.timestamp), String(r.durationDays), flowIntensityLabel(r.flowIntensity), r.symptoms ?? ""]}
       onDelete={deletePeriod}
     />
   );
@@ -123,19 +127,33 @@ export function App() {
       chart={
         <TrendChart samples={bowelSamples()} minTickStep={1}
           formatTick={formatIntegerTick} now={now}
-          legend={["BRISTOL[1-7]", "EFFORT [1-5]"]} />
+          legend={["BRISTOL-LIKE", "EFFORT"]} />
       }
-      columns={["id", "date", "bristol", "effort", "note"]}
-      row={(r) => [r.id.slice(0, 8), formatTimestamp(r.timestamp), String(r.bristolType), String(r.effortLevel), r.note ?? ""]}
+      columns={["id", "date", "bristol-like", "effort", "note"]}
+      row={(r) => [r.id.slice(0, 8), formatTimestamp(r.timestamp), bristolLabel(r.bristolType), effortLabel(r.effortLevel), r.note ?? ""]}
       onDelete={deleteBowel}
     />
   );
+  const hydratePanel = (
+    <Panel
+      title="HYDRATE"
+      records={hydrates.value}
+      now={now}
+      chart={
+        <TrendChart samples={hydrateSamples()} minTickStep={0.01}
+          formatTick={formatVolumeMl} now={now} />
+      }
+      columns={["id", "date", "ml", "note"]}
+      row={(r) => [r.id.slice(0, 8), formatTimestamp(r.timestamp), formatVolumeMl(r.volumeMl), r.note ?? ""]}
+      onDelete={deleteHydrate}
+    />
+  );
 
-  const panelsFor = (): VNode[] => [weightPanel, periodPanel, bowelPanel];
-  const panelFor = (t: "weight" | "period" | "bowel"): VNode =>
-    t === "weight" ? weightPanel : t === "period" ? periodPanel : bowelPanel;
+  const panelsFor = (): VNode[] => [weightPanel, periodPanel, bowelPanel, hydratePanel];
+  const panelFor = (t: "weight" | "period" | "bowel" | "hydrate"): VNode =>
+    t === "weight" ? weightPanel : t === "period" ? periodPanel : t === "bowel" ? bowelPanel : hydratePanel;
 
-  const navItems = ["weight", "period", "bowel"] as const;
+  const navItems = ["weight", "period", "bowel", "hydrate"] as const;
 
   const sidebar = (
     <aside class="sidebar desktop-only" data-testid="sidebar">
@@ -228,6 +246,7 @@ export function App() {
             modalOpen.value = false;
           }}
           lastWeightKg={weights.value.length ? weights.value[0].weightKg : null}
+          lastVolumeMl={hydrates.value.length ? hydrates.value[0].volumeMl : null}
           onSaved={() => {
             modalOpen.value = false;
             showToast("RECORD SAVED");

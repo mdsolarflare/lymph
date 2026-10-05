@@ -7,14 +7,17 @@
 import { effect, signal } from "@preact/signals";
 import type {
   BowelRecord,
+  HydrateRecord,
   PeriodRecord,
   WeightRecord,
 } from "lymph-core";
 import {
   decodeBowelCsv,
+  decodeHydrateCsv,
   decodePeriodCsv,
   decodeWeightCsv,
   encodeBowelCsv,
+  encodeHydrateCsv,
   encodePeriodCsv,
   encodeWeightCsv,
 } from "lymph-core";
@@ -23,6 +26,7 @@ import { nowMillis, uuidV4 } from "./format.ts";
 export const WEIGHT_KEY = "lymph.weight_records";
 export const PERIOD_KEY = "lymph.period_records";
 export const BOWEL_KEY = "lymph.bowel_records";
+export const HYDRATE_KEY = "lymph.hydrate_records";
 
 // ── localStorage with the Kotlin failure policy ─────────────────────────────
 // Unreadable/corrupt stored data → warn + start empty; write failures →
@@ -81,6 +85,7 @@ function newestFirst<T extends { timestamp: number }>(records: T[]): T[] {
 export const weights = signal<WeightRecord[]>([]);
 export const periods = signal<PeriodRecord[]>([]);
 export const bowels = signal<BowelRecord[]>([]);
+export const hydrates = signal<HydrateRecord[]>([]);
 
 let storeInitialized = false;
 
@@ -95,6 +100,7 @@ export function initStore(): void {
   weights.value = newestFirst(hydrate(WEIGHT_KEY, decodeWeightCsv));
   periods.value = newestFirst(hydrate(PERIOD_KEY, decodePeriodCsv));
   bowels.value = newestFirst(hydrate(BOWEL_KEY, decodeBowelCsv));
+  hydrates.value = newestFirst(hydrate(HYDRATE_KEY, decodeHydrateCsv));
 
   effect(() => {
     lsSet(WEIGHT_KEY, encodeWeightCsv(weights.value));
@@ -105,9 +111,12 @@ export function initStore(): void {
   effect(() => {
     lsSet(BOWEL_KEY, encodeBowelCsv(bowels.value));
   });
+  effect(() => {
+    lsSet(HYDRATE_KEY, encodeHydrateCsv(hydrates.value));
+  });
 }
 
-// ── mutations ─────────────────────────────────────────.ts───────────────────
+// ── mutations ────────────────────────────────────────────────────────────────
 
 export function insertWeight(rec: Omit<WeightRecord, "id" | "timestamp"> & Partial<WeightRecord>): void {
   const full: WeightRecord = {
@@ -141,6 +150,18 @@ export function insertBowel(rec: Omit<BowelRecord, "id" | "timestamp"> & Partial
   bowels.value = [full, ...bowels.value];
 }
 
+export function insertHydrate(
+  rec: Omit<HydrateRecord, "id" | "timestamp"> & Partial<HydrateRecord>,
+): void {
+  const full: HydrateRecord = {
+    id: rec.id ?? uuidV4(),
+    timestamp: rec.timestamp ?? nowMillis(),
+    volumeMl: rec.volumeMl,
+    note: rec.note ?? null,
+  };
+  hydrates.value = [full, ...hydrates.value];
+}
+
 export function deleteWeight(id: string): void {
   weights.value = weights.value.filter((r) => r.id !== id);
 }
@@ -149,6 +170,9 @@ export function deletePeriod(id: string): void {
 }
 export function deleteBowel(id: string): void {
   bowels.value = bowels.value.filter((r) => r.id !== id);
+}
+export function deleteHydrate(id: string): void {
+  hydrates.value = hydrates.value.filter((r) => r.id !== id);
 }
 
 /** Import flows call these after wasm importZip returns the to-insert lists. */
@@ -163,6 +187,10 @@ export function insertManyPeriods(records: PeriodRecord[]): void {
 export function insertManyBowels(records: BowelRecord[]): void {
   if (records.length === 0) return;
   bowels.value = [...records, ...bowels.value];
+}
+export function insertManyHydrates(records: HydrateRecord[]): void {
+  if (records.length === 0) return;
+  hydrates.value = [...records, ...hydrates.value];
 }
 
 // ── theme (the only setting: dark/light) ───────────────────────────────────

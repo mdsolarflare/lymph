@@ -6,13 +6,14 @@ stable across all targets (Android, iOS, web) and is the only supported migratio
 
 ## Archive layout
 
-`lymph-export.zip` (export) and any import archive both contain up to three entries:
+`lymph-export.zip` (export) and any import archive both contain up to four entries:
 
 | Entry name            | Record type | CSV header (exact)                                   |
 | --------------------- | ----------- | ---------------------------------------------------- |
 | `weight_records.csv`  | Weight      | `id,timestamp,weightKg,note`                          |
 | `period_records.csv`  | Period      | `id,timestamp,durationDays,flowIntensity,symptoms`    |
 | `bowel_records.csv`   | Bowel       | `id,timestamp,bristolType,effortLevel,note`           |
+| `hydrate_records.csv` | Hydrate     | `id,timestamp,volumeMl,note`                          |
 
 Entry names are case-sensitive exact matches. An archive may omit tables entirely
 (importing a weight-only archive works, leaving period and bowel untouched).
@@ -46,8 +47,9 @@ CSV follows RFC 4180:
 | `durationDays`  | int     | 1 – 14.                                                            |
 | `flowIntensity` | int     | 1 (lightest) – 4 (heaviest).                                       |
 | `symptoms`      | string  | Free text, may be empty.                                           |
-| `bristolType`   | int     | 1 – 7 (Bristol stool scale).                                       |
-| `effortLevel`   | int     | 1 (easy) – 5 (straining).                                          |
+| `bristolType`   | int     | 1 – 5 (bristol-like scale: 1 like pebbles, 3 perfect, 5 water).    |
+| `effortLevel`   | int     | 1 (low) – 3 (high).                                                |
+| `volumeMl`      | double  | 1 – 10000 (inclusive), canonical milliliters.                      |
 
 Validation ranges mirror the input modal in the UI. Rows out of range are counted as
 **invalid** and skipped; they do not abort the import.

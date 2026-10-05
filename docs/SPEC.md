@@ -76,7 +76,31 @@ gets its own entity, storage, and CSV file. All records:
 |---------|--------|------------------------------------------------------|
 | Weight  | `weightKg: number`, `note: string?` | 0.1 ≤ weightKg ≤ 1000 (canonical kilograms) |
 | Period  | `durationDays: int`, `flowIntensity: int` (default 2), `symptoms: string?` | 1 ≤ durationDays ≤ 14; 1 ≤ flowIntensity ≤ 4 |
-| Bowel   | `bristolType: int`, `effortLevel: int` (default 3), `note: string?` | 1 ≤ bristolType ≤ 7 (Bristol stool scale); 1 ≤ effortLevel ≤ 5 |
+| Bowel   | `bristolType: int`, `effortLevel: int` (default 3 / 2), `note: string?` | 1 ≤ bristolType ≤ 5; 1 ≤ effortLevel ≤ 3 |
+| Hydrate | `volumeMl: number`, `note: string?` | 1 ≤ volumeMl ≤ 10000 (canonical milliliters) |
+
+**Hydrate [DECIDED]**: the fourth measurement type, mirroring WEIGHT's entry pattern.
+UI displays/edits in **L** or **OZ** (unit toggle); storage and CSV are canonical
+milliliters (`volumeMl`). Integer-hundredths discipline, validation against the
+canonical stored value, and prefill-from-last all match the weight semantics.
+Exact factor: 1 US fl oz = 29.5735295625 ml. Dial step is unit-aware: ±0.1 L in
+liter mode, ±1 OZ in ounce mode. Default 500 ml ("a standard water bottle").
+
+**Flow-intensity presentation [DECIDED]**: storage and CSV remain
+quantitative 1–4 (frozen contract, DATA-EXCHANGE.md unchanged). The UI presents
+the value **qualitatively**: 1→NONE, 2→LIGHT, 3→MEDIUM, 4→HEAVY (mapping lives
+in the Rust core, `entity::flow_intensity_label`). The stored quantitative
+value is what charts plot and what validation checks — the label is display-only
+and is never persisted.
+
+**Bowel scales [DECIDED, breaking]**: the UI's bristol-like scale is 1–5 —
+1→LIKE PEBBLES, 2→HARD, 3→PERFECT, 4→MUSHY :(, 5→WATER (labels:
+`entity::bristol_label`) — and effort is 1–3 — 1→LOW, 2→MEDIUM, 3→HIGH
+(`entity::effort_label`). CSV column *names* are frozen (`bristolType`,
+`effortLevel`), but the **valid ranges are now 1–5 / 1–3**. Old exports with
+bristol 6–7 or effort 4–5 have those rows counted as invalid on import (the
+best-effort importer skips them; nothing else needed). Defaults: bristol 3
+(PERFECT), effort 2 (MEDIUM).
 
 **Weight-entry semantics (load-bearing, ported from the Kotlin app):**
 

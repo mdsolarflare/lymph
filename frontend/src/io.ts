@@ -3,10 +3,19 @@
 // browser side: download delivery and file picking.
 
 import { buildExportZip, importZip } from "lymph-core";
-import { bowels, insertManyBowels, insertManyPeriods, insertManyWeights, periods, weights } from "./store.ts";
+import {
+  bowels,
+  hydrates,
+  insertManyBowels,
+  insertManyHydrates,
+  insertManyPeriods,
+  insertManyWeights,
+  periods,
+  weights,
+} from "./store.ts";
 
 export function exportZip(): void {
-  const bytes = buildExportZip(weights.value, periods.value, bowels.value);
+  const bytes = buildExportZip(weights.value, periods.value, bowels.value, hydrates.value);
   const blob = new Blob([bytes as unknown as BlobPart], { type: "application/zip" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -23,9 +32,11 @@ export async function importFromFile(file: File): Promise<string> {
     weights.value.map((r) => r.id),
     periods.value.map((r) => r.id),
     bowels.value.map((r) => r.id),
+    hydrates.value.map((r) => r.id),
   );
   insertManyWeights(outcome.weightToInsert);
   insertManyPeriods(outcome.periodToInsert);
   insertManyBowels(outcome.bowelToInsert);
+  insertManyHydrates(outcome.hydrateToInsert);
   return outcome.summary;
 }

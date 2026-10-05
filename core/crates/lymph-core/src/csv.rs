@@ -6,7 +6,8 @@
 //! export, CRLF + BOM tolerated on import, blank lines ignored. Row-level
 //! problems are counted in `invalid_rows`, never thrown.
 
-use crate::entity::{BowelRecord, PeriodRecord, WeightRecord};
+use crate::entity::{ranges, BowelRecord, HydrateRecord, PeriodRecord, WeightRecord};
+use crate::volume::{format_volume_ml, MAX_VOLUME_ML, MIN_VOLUME_ML};
 use crate::weight::{format_kg, MAX_WEIGHT_KG, MIN_WEIGHT_KG};
 
 /// CSV header for weight records (schema contract).
@@ -15,6 +16,9 @@ pub const WEIGHT_HEADER: &str = "id,timestamp,weightKg,note";
 pub const PERIOD_HEADER: &str = "id,timestamp,durationDays,flowIntensity,symptoms";
 /// CSV header for bowel records (schema contract).
 pub const BOWEL_HEADER: &str = "id,timestamp,bristolType,effortLevel,note";
+
+/// CSV header for hydrate records (schema contract).
+pub const HYDRATE_HEADER: &str = "id,timestamp,volumeMl,note";
 
 /// Parsed result for one table: valid records plus the number of rejected rows.
 pub struct DecodedTable<T> {
@@ -93,6 +97,21 @@ pub fn encode_bowel_records(records: &[BowelRecord]) -> String {
             r.timestamp,
             r.bristol_type,
             r.effort_level,
+            quote(&r.note)
+        ));
+    }
+    s
+}
+
+pub fn encode_hydrate_records(records: &[HydrateRecord]) -> String {
+    let mut s = String::from(HYDRATE_HEADER);
+    s.push('\n');
+    for r in records {
+        s.push_str(&format!(
+            "{},{},{},{}\n",
+            r.id,
+            r.timestamp,
+            format_volume_ml(r.volume_ml),
             quote(&r.note)
         ));
     }
@@ -244,7 +263,9 @@ pub fn decode_bowel_records(csv: &str) -> Result<DecodedTable<BowelRecord>, CsvS
         }
         let bristol_type: i32 = f[2].parse().ok()?;
         let effort_level: i32 = f[3].parse().ok()?;
-        if !(1..=7).contains(&bristol_type) || !(1..=5).contains(&effort_level) {
+        if !(ranges::MIN_BRISTOL_TYPE..=ranges::MAX_BRISTOL_TYPE).contains(&bristol_type)
+            || !(ranges::MIN_EFFORT_LEVEL..=ranges::MAX_EFFORT_LEVEL).contains(&effort_level)
+        {
             return None;
         }
         Some(BowelRecord {
@@ -253,6 +274,33 @@ pub fn decode_bowel_records(csv: &str) -> Result<DecodedTable<BowelRecord>, CsvS
             bristol_type,
             effort_level,
             note: empty_to_none(&f[4]),
+        })
+    })
+}
+
+pub fn decode_hydrate_records(csv: &str) -> Result<DecodedTable<HydrateRecord>, CsvSchemaError> {
+    decode_table(csv, HYDRATE_HEADER, |f| {
+        if f.len() != 4 {
+            return None;
+        }
+        let id = f[0].trim();
+        if id.is_empty() {
+            return None;
+        }
+        let timestamp: i64 = f[1].parse().ok()?;
+        if timestamp <= 0 {
+            return None;
+        }
+        // Same canonical range the input modal enforces (see volume.rs).
+        let volume_ml: f64 = f[2].parse().ok()?;
+        if !volume_ml.is_finite() || !(MIN_VOLUME_ML..=MAX_VOLUME_ML).contains(&volume_ml) {
+            return None;
+        }
+        Some(HydrateRecord {
+            id: id.to_string(),
+            timestamp,
+            volume_ml,
+            note: empty_to_none(&f[3]),
         })
     })
 }
@@ -324,7 +372,7 @@ mod tests {
     fn round_trip_bowel() {
         let records = vec![
             bowel("a", 1, 4, 3, None),
-            bowel("b", 2, 6, 5, Some("straining, note")),
+            bowel("b", 2, 5, 2, Some("straining, note")),
             bowel("c", 3, 2, 1, None),
         ];
         let decoded = decode_bowel_records(&encode_bowel_records(&records)).unwrap();
@@ -426,11 +474,21 @@ mod tests {
 
     #[test]
     fn bowel_bounds_enforced() {
-        let csv = "id,timestamp,bristolType,effortLevel,note\na,100,0,3,\"\"\nb,200,8,3,\"\"\nc,300,4,0,\"\"\nd,400,4,6,\"\"\ne,500,7,5,\"\"\n";
+        // Bristol-like 1-5, effort 1-3 (docs/SPEC.md §3; old 1-7/1-5 scales retired).
+        let csv = "id,timestamp,bristolType,effortLevel,note\na,100,0,2,\"\"\nb,200,6,2,\"\"\nc,300,4,0,\"\"\nd,400,4,4,\"\"\ne,500,5,3,\"\"\n";
         let decoded = decode_bowel_records(csv).unwrap();
         assert_eq!(decoded.records.len(), 1);
         assert_eq!(decoded.records[0].id, "e");
         assert_eq!(decoded.invalid_rows, 4);
+    }
+
+    #[test]
+    fn bowel_boundary_values_accepted() {
+        // Exactly the scale edges are valid: bristol 1 and 5, effort 1 and 3.
+        let csv = "id,timestamp,bristolType,effortLevel,note\na,100,1,1,\"\"\nb,200,5,3,\"\"\n";
+        let decoded = decode_bowel_records(csv).unwrap();
+        assert_eq!(decoded.records.len(), 2);
+        assert_eq!(decoded.invalid_rows, 0);
     }
 
     #[test]

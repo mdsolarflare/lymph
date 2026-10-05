@@ -6,8 +6,9 @@
 
 use crate::chart::{map_multi_series, MultiSeries, Sample, TimeRange};
 use crate::csv;
-use crate::entity::{BowelRecord, PeriodRecord, WeightRecord};
+use crate::entity::{BowelRecord, HydrateRecord, PeriodRecord, WeightRecord};
 use crate::importer::{self, ImportOutcome};
+use crate::volume;
 use crate::weight;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -40,6 +41,13 @@ pub fn encode_period_csv(records: JsValue) -> Result<String, JsError> {
 #[wasm_bindgen(js_name = "encodeBowelCsv")]
 pub fn encode_bowel_csv(records: JsValue) -> Result<String, JsError> {
     Ok(csv::encode_bowel_records(&de::<Vec<BowelRecord>>(
+        &records,
+    )?))
+}
+
+#[wasm_bindgen(js_name = "encodeHydrateCsv")]
+pub fn encode_hydrate_csv(records: JsValue) -> Result<String, JsError> {
+    Ok(csv::encode_hydrate_records(&de::<Vec<HydrateRecord>>(
         &records,
     )?))
 }
@@ -78,23 +86,34 @@ pub fn decode_bowel_csv(csv_text: &str) -> Result<JsValue, JsError> {
     decoded(csv::decode_bowel_records(csv_text))
 }
 
+#[wasm_bindgen(js_name = "decodeHydrateCsv")]
+pub fn decode_hydrate_csv(csv_text: &str) -> Result<JsValue, JsError> {
+    decoded(csv::decode_hydrate_records(csv_text))
+}
+
 // ── Export / import (ZIP round-trip) ─────────────────────────────────────────
 
-/// Builds the full lymph-export.zip from the three record lists.
+/// Builds the full lymph-export.zip from the four record lists.
 /// Returns the archive bytes as a Uint8Array.
 #[wasm_bindgen(js_name = "buildExportZip")]
 pub fn build_export_zip(
     weights: JsValue,
     periods: JsValue,
     bowels: JsValue,
+    hydrates: JsValue,
 ) -> Result<Vec<u8>, JsError> {
     let weights: Vec<WeightRecord> = de(&weights)?;
     let periods: Vec<PeriodRecord> = de(&periods)?;
     let bowels: Vec<BowelRecord> = de(&bowels)?;
+    let hydrates: Vec<HydrateRecord> = de(&hydrates)?;
     Ok(crate::zip::build_zip(&[
         (importer::WEIGHT_CSV, &csv::encode_weight_records(&weights)),
         (importer::PERIOD_CSV, &csv::encode_period_records(&periods)),
         (importer::BOWEL_CSV, &csv::encode_bowel_records(&bowels)),
+        (
+            importer::HYDRATE_CSV,
+            &csv::encode_hydrate_records(&hydrates),
+        ),
     ]))
 }
 
@@ -104,12 +123,14 @@ pub fn import_zip(
     weight_existing_ids: JsValue,
     period_existing_ids: JsValue,
     bowel_existing_ids: JsValue,
+    hydrate_existing_ids: JsValue,
 ) -> Result<JsValue, JsError> {
     let w: Vec<String> = de(&weight_existing_ids)?;
     let p: Vec<String> = de(&period_existing_ids)?;
     let b: Vec<String> = de(&bowel_existing_ids)?;
+    let h: Vec<String> = de(&hydrate_existing_ids)?;
     let outcome: ImportOutcome =
-        importer::import_zip(&zip_bytes, &w, &p, &b).map_err(|e| JsError::new(&e.message))?;
+        importer::import_zip(&zip_bytes, &w, &p, &b, &h).map_err(|e| JsError::new(&e.message))?;
     let summary = outcome.result.summary();
     ser(&JsImportOutcome {
         result: outcome.result,
@@ -117,6 +138,7 @@ pub fn import_zip(
         weight_to_insert: outcome.weight_to_insert,
         period_to_insert: outcome.period_to_insert,
         bowel_to_insert: outcome.bowel_to_insert,
+        hydrate_to_insert: outcome.hydrate_to_insert,
     })
 }
 
@@ -129,6 +151,22 @@ struct JsImportOutcome {
     weight_to_insert: Vec<WeightRecord>,
     period_to_insert: Vec<PeriodRecord>,
     bowel_to_insert: Vec<BowelRecord>,
+    hydrate_to_insert: Vec<HydrateRecord>,
+}
+
+#[wasm_bindgen(js_name = "flowIntensityLabel")]
+pub fn flow_intensity_label_js(v: i32) -> String {
+    crate::entity::flow_intensity_label(v).to_string()
+}
+
+#[wasm_bindgen(js_name = "bristolLabel")]
+pub fn bristol_label_js(v: i32) -> String {
+    crate::entity::bristol_label(v).to_string()
+}
+
+#[wasm_bindgen(js_name = "effortLabel")]
+pub fn effort_label_js(v: i32) -> String {
+    crate::entity::effort_label(v).to_string()
 }
 
 // ── Weight math ──────────────────────────────────────────────────────────────
@@ -156,6 +194,38 @@ pub fn hundredths_lb_to_kg(hundredths_lb: i32) -> f64 {
 #[wasm_bindgen(js_name = "kgToHundredthsLb")]
 pub fn kg_to_hundredths_lb(weight_kg: f64) -> i32 {
     weight::kg_to_hundredths_lb(weight_kg)
+}
+
+// ── Hydration volume math ───────────────────────────────────────────────────
+
+#[wasm_bindgen(js_name = "checkVolume")]
+pub fn check_volume(typed_hundredths: i32, unit_is_l: bool) -> Result<JsValue, JsError> {
+    ser(&volume::check_volume(typed_hundredths, unit_is_l))
+}
+
+#[wasm_bindgen(js_name = "hundredthsLToMl")]
+pub fn hundredths_l_to_ml(hundredths_l: i32) -> f64 {
+    volume::hundredths_l_to_ml(hundredths_l)
+}
+
+#[wasm_bindgen(js_name = "hundredthsOzToMl")]
+pub fn hundredths_oz_to_ml(hundredths_oz: i32) -> f64 {
+    volume::hundredths_oz_to_ml(hundredths_oz)
+}
+
+#[wasm_bindgen(js_name = "mlToHundredthsL")]
+pub fn ml_to_hundredths_l(ml: f64) -> i32 {
+    volume::ml_to_hundredths_l(ml)
+}
+
+#[wasm_bindgen(js_name = "mlToHundredthsOz")]
+pub fn ml_to_hundredths_oz(ml: f64) -> i32 {
+    volume::ml_to_hundredths_oz(ml)
+}
+
+#[wasm_bindgen(js_name = "formatVolumeMl")]
+pub fn format_volume_ml_js(volume_ml: f64) -> String {
+    volume::format_volume_ml(volume_ml)
 }
 
 // ── Chart ───────────────────────────────────────────────────────────────────

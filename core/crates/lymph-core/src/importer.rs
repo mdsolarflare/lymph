@@ -14,7 +14,7 @@
 //! identical as long as the caller inserts exactly what is returned, in order.
 
 use crate::csv;
-use crate::entity::{BiometricRecord, BowelRecord, PeriodRecord, WeightRecord};
+use crate::entity::{BiometricRecord, BowelRecord, HydrateRecord, PeriodRecord, WeightRecord};
 use crate::zip;
 use serde::Serialize;
 use std::collections::HashSet;
@@ -23,8 +23,9 @@ use std::collections::HashSet;
 pub const WEIGHT_CSV: &str = "weight_records.csv";
 pub const PERIOD_CSV: &str = "period_records.csv";
 pub const BOWEL_CSV: &str = "bowel_records.csv";
+pub const HYDRATE_CSV: &str = "hydrate_records.csv";
 
-const KNOWN_TABLES: [&str; 3] = [WEIGHT_CSV, PERIOD_CSV, BOWEL_CSV];
+const KNOWN_TABLES: [&str; 4] = [WEIGHT_CSV, PERIOD_CSV, BOWEL_CSV, HYDRATE_CSV];
 
 /// Expected failure of an import operation — `message` is safe to show in the UI as-is.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,25 +52,30 @@ pub struct TableImport {
     pub error: Option<String>,
 }
 
-/// Aggregate outcome of one import run across all three tables.
+/// Aggregate outcome of one import run across all four tables.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct ImportResult {
     pub weight: TableImport,
     pub period: TableImport,
     pub bowel: TableImport,
+    pub hydrate: TableImport,
 }
 
 impl ImportResult {
     pub fn total_added(&self) -> usize {
-        self.weight.added + self.period.added + self.bowel.added
+        self.weight.added + self.period.added + self.bowel.added + self.hydrate.added
     }
     pub fn total_skipped_duplicates(&self) -> usize {
         self.weight.skipped_duplicates
             + self.period.skipped_duplicates
             + self.bowel.skipped_duplicates
+            + self.hydrate.skipped_duplicates
     }
     pub fn total_invalid_rows(&self) -> usize {
-        self.weight.invalid_rows + self.period.invalid_rows + self.bowel.invalid_rows
+        self.weight.invalid_rows
+            + self.period.invalid_rows
+            + self.bowel.invalid_rows
+            + self.hydrate.invalid_rows
     }
 
     /// Terminal-style one-line summary for the UI snackbar (exact strings, em dash).
@@ -85,6 +91,7 @@ impl ImportResult {
             self.weight.error.as_ref().map(|e| format!("weight: {e}")),
             self.period.error.as_ref().map(|e| format!("period: {e}")),
             self.bowel.error.as_ref().map(|e| format!("bowel: {e}")),
+            self.hydrate.error.as_ref().map(|e| format!("hydrate: {e}")),
         ];
         let errors: Vec<String> = errors.into_iter().flatten().collect();
         if !errors.is_empty() {
@@ -102,6 +109,7 @@ pub struct ImportOutcome {
     pub weight_to_insert: Vec<WeightRecord>,
     pub period_to_insert: Vec<PeriodRecord>,
     pub bowel_to_insert: Vec<BowelRecord>,
+    pub hydrate_to_insert: Vec<HydrateRecord>,
 }
 
 /// Imports a lymph export archive (ZIP of CSVs).
@@ -113,6 +121,7 @@ pub fn import_zip(
     weight_existing_ids: &[String],
     period_existing_ids: &[String],
     bowel_existing_ids: &[String],
+    hydrate_existing_ids: &[String],
 ) -> Result<ImportOutcome, ImportException> {
     let entries = zip::decode(zip_bytes)?; // Err on structural problems
     if !entries
@@ -120,7 +129,7 @@ pub fn import_zip(
         .any(|(name, _)| KNOWN_TABLES.contains(&name.as_str()))
     {
         return Err(ImportException::new(&format!(
-            "no recognizable lymph CSVs found — expected {WEIGHT_CSV} / {PERIOD_CSV} / {BOWEL_CSV}"
+            "no recognizable lymph CSVs found — expected {WEIGHT_CSV} / {PERIOD_CSV} / {BOWEL_CSV} / {HYDRATE_CSV}"
         )));
     }
 
@@ -146,16 +155,23 @@ pub fn import_zip(
         csv::decode_bowel_records,
         bowel_existing_ids,
     );
+    let (hydrate, hydrate_to_insert) = import_table(
+        find(HYDRATE_CSV),
+        csv::decode_hydrate_records,
+        hydrate_existing_ids,
+    );
 
     Ok(ImportOutcome {
         result: ImportResult {
             weight,
             period,
             bowel,
+            hydrate,
         },
         weight_to_insert,
         period_to_insert,
         bowel_to_insert,
+        hydrate_to_insert,
     })
 }
 
@@ -218,7 +234,9 @@ fn import_table<T: BiometricRecord + Clone>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::csv::{encode_bowel_records, encode_period_records, encode_weight_records};
+    use crate::csv::{
+        encode_bowel_records, encode_hydrate_records, encode_period_records, encode_weight_records,
+    };
 
     fn w(id: &str, ts: i64) -> WeightRecord {
         WeightRecord {
@@ -246,6 +264,15 @@ mod tests {
             note: None,
         }
     }
+    #[allow(dead_code)] // parity helper; hydrate-specific tests build their own
+    fn h(id: &str, ts: i64) -> HydrateRecord {
+        HydrateRecord {
+            id: id.into(),
+            timestamp: ts,
+            volume_ml: 250.0,
+            note: None,
+        }
+    }
     fn ids(records: &[WeightRecord]) -> Vec<String> {
         records.iter().map(|r| r.id.clone()).collect()
     }
@@ -259,13 +286,14 @@ mod tests {
             (WEIGHT_CSV, &encode_weight_records(weights)),
             (PERIOD_CSV, &encode_period_records(periods)),
             (BOWEL_CSV, &encode_bowel_records(bowels)),
+            (HYDRATE_CSV, &encode_hydrate_records(&[])),
         ])
     }
 
     #[test]
     fn fresh_import_adds_all_tables() {
         let zip = zip_of(&[w("w1", 1), w("w2", 2)], &[p("p1", 1)], &[b("b1", 1)]);
-        let outcome = import_zip(&zip, &[], &[], &[]).unwrap();
+        let outcome = import_zip(&zip, &[], &[], &[], &[]).unwrap();
         assert_eq!(outcome.result.total_added(), 4);
         assert_eq!(outcome.result.total_skipped_duplicates(), 0);
         assert_eq!(outcome.result.total_invalid_rows(), 0);
@@ -284,7 +312,7 @@ mod tests {
     #[test]
     fn reimport_skips_all_as_duplicates() {
         let zip = zip_of(&[w("w1", 1), w("w2", 2)], &[p("p1", 1)], &[]);
-        let first = import_zip(&zip, &[], &[], &[]).unwrap();
+        let first = import_zip(&zip, &[], &[], &[], &[]).unwrap();
         let second = import_zip(
             &zip,
             &ids(&first.weight_to_insert),
@@ -293,6 +321,7 @@ mod tests {
                 .iter()
                 .map(|r| r.id.clone())
                 .collect::<Vec<_>>(),
+            &[],
             &[],
         )
         .unwrap();
@@ -304,7 +333,7 @@ mod tests {
     #[test]
     fn partial_overlap_skips_only_existing() {
         let zip = zip_of(&[w("w1", 1), w("w2", 2)], &[], &[]);
-        let outcome = import_zip(&zip, &["w1".to_string()], &[], &[]).unwrap();
+        let outcome = import_zip(&zip, &["w1".to_string()], &[], &[], &[]).unwrap();
         assert_eq!(outcome.result.weight.added, 1);
         assert_eq!(outcome.result.weight.skipped_duplicates, 1);
         assert_eq!(
@@ -321,7 +350,7 @@ mod tests {
     fn in_batch_duplicates_first_occurrence_wins() {
         let csv_text = "id,timestamp,weightKg,note\ndup,100,70.0,\"\"\ndup,200,80.0,\"\"\n";
         let zip = zip::build_zip(&[(WEIGHT_CSV, csv_text)]);
-        let outcome = import_zip(&zip, &[], &[], &[]).unwrap();
+        let outcome = import_zip(&zip, &[], &[], &[], &[]).unwrap();
         assert_eq!(outcome.result.weight.added, 1);
         assert_eq!(outcome.result.weight.skipped_duplicates, 1);
         assert_eq!(outcome.weight_to_insert.len(), 1);
@@ -331,7 +360,7 @@ mod tests {
     #[test]
     fn missing_table_yields_zero_counts_no_error() {
         let zip = zip::build_zip(&[(WEIGHT_CSV, &encode_weight_records(&[w("w1", 1)]))]);
-        let outcome = import_zip(&zip, &[], &[], &[]).unwrap();
+        let outcome = import_zip(&zip, &[], &[], &[], &[]).unwrap();
         assert_eq!(outcome.result.weight.added, 1);
         assert_eq!(outcome.result.period.error, None);
         assert_eq!(outcome.result.period, TableImport::default());
@@ -342,7 +371,7 @@ mod tests {
     fn invalid_rows_counted_not_inserted() {
         let csv_text = "id,timestamp,weightKg,note\nok1,100,70.4,\"\"\n,200,71.0,\"\"\nok2,300,999999.0,\"\"\nok3,400,72.0,\"\"\n";
         let zip = zip::build_zip(&[(WEIGHT_CSV, csv_text)]);
-        let outcome = import_zip(&zip, &[], &[], &[]).unwrap();
+        let outcome = import_zip(&zip, &[], &[], &[], &[]).unwrap();
         assert_eq!(outcome.result.weight.added, 2);
         assert_eq!(outcome.result.weight.invalid_rows, 2);
         assert_eq!(
@@ -362,7 +391,7 @@ mod tests {
             (PERIOD_CSV, &encode_period_records(&[p("p1", 1)])),
             (BOWEL_CSV, &encode_bowel_records(&[b("b1", 1)])),
         ]);
-        let outcome = import_zip(&zip, &[], &[], &[]).unwrap();
+        let outcome = import_zip(&zip, &[], &[], &[], &[]).unwrap();
         assert!(outcome.result.weight.error.is_some());
         assert_eq!(outcome.result.weight.added, 0);
         assert_eq!(outcome.result.period.added, 1);
@@ -372,12 +401,12 @@ mod tests {
     #[test]
     fn archive_without_known_tables_throws() {
         let zip = zip::build_zip(&[("random.csv", "x,y\n1,2\n")]);
-        assert!(import_zip(&zip, &[], &[], &[]).is_err());
+        assert!(import_zip(&zip, &[], &[], &[], &[]).is_err());
     }
 
     #[test]
     fn not_a_zip_throws() {
-        assert!(import_zip(b"nope, not a zip", &[], &[], &[]).is_err());
+        assert!(import_zip(b"nope, not a zip", &[], &[], &[], &[]).is_err());
     }
 
     #[test]
@@ -420,5 +449,66 @@ mod tests {
             ..Default::default()
         };
         assert!(with_error.summary().contains("weight: header mismatch"));
+    }
+}
+
+#[cfg(test)]
+mod hydrate_tests {
+    use super::*;
+    use crate::csv::encode_hydrate_records;
+
+    fn h(id: &str, ts: i64, ml: f64) -> HydrateRecord {
+        HydrateRecord {
+            id: id.into(),
+            timestamp: ts,
+            volume_ml: ml,
+            note: None,
+        }
+    }
+
+    /// Hydrate-only archive: importable on its own, other tables untouched.
+    #[test]
+    fn hydrate_only_archive_imports() {
+        let records = vec![h("h1", 1, 250.0), h("h2", 2, 1000.0)];
+        let zip = zip::build_zip(&[(HYDRATE_CSV, &encode_hydrate_records(&records))]);
+        let outcome = import_zip(&zip, &[], &[], &[], &[]).unwrap();
+        assert_eq!(outcome.result.total_added(), 2);
+        assert_eq!(outcome.hydrate_to_insert.len(), 2);
+        assert_eq!(outcome.result.hydrate.added, 2);
+        assert!(outcome.weight_to_insert.is_empty());
+        // Insert-only: re-import counts all as duplicates.
+        let second = import_zip(
+            &zip,
+            &[],
+            &[],
+            &[],
+            &outcome
+                .hydrate_to_insert
+                .iter()
+                .map(|r| r.id.clone())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        assert_eq!(second.result.total_added(), 0);
+        assert_eq!(second.result.total_skipped_duplicates(), 2);
+    }
+
+    /// Out-of-range volumes are counted invalid, not imported.
+    #[test]
+    fn hydrate_invalid_rows_counted() {
+        let csv_text =
+            "id,timestamp,volumeMl,note\nok1,100,250.0,\"\"\nbad1,200,0.5,\"\"\nbad2,300,20000.0,\"\"\nok2,400,29.5735295625,\"\"\n";
+        let zip = zip::build_zip(&[(HYDRATE_CSV, csv_text)]);
+        let outcome = import_zip(&zip, &[], &[], &[], &[]).unwrap();
+        assert_eq!(outcome.result.hydrate.added, 2);
+        assert_eq!(outcome.result.hydrate.invalid_rows, 2);
+        assert_eq!(
+            outcome
+                .hydrate_to_insert
+                .iter()
+                .map(|r| r.id.clone())
+                .collect::<Vec<_>>(),
+            vec!["ok1", "ok2"]
+        );
     }
 }

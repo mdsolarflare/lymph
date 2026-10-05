@@ -16,6 +16,7 @@ pub mod crc32;
 pub mod csv;
 pub mod entity;
 pub mod importer;
+pub mod volume;
 pub mod weight;
 pub mod zip;
 
