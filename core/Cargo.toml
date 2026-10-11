@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = ["crates/lymph-core"]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+
+[profile.release]
+opt-level = "z"   # small WASM payload; the core is tiny anyway
+lto = true

@@ -1,0 +1,318 @@
+/* Lymph v2 — clinical command-line aesthetic. Sharp corners everywhere.
+   Two themes only: dark (default) and light, via [data-theme] + CSS custom
+   properties. Chart series colors are theme tokens too. */
+
+:root, [data-theme="dark"] {
+  --bg: #111111;          /* LymphBlack */
+  --surface: #1a1a1a;     /* LymphSurface */
+  --text: #d6f9ff;        /* LymphCyan */
+  --dim: #5a7a82;         /* LymphCyanDim */
+  --accent: #d6f9ff;
+  --error: #ff4d4d;       /* LymphRed */
+  --series1: #d6f9ff;     /* cyan */
+  --series2: #ffb454;     /* amber — color-blind-safe pair with cyan */
+  --grid: #2a2a2a;
+}
+
+[data-theme="light"] {
+  --bg: #ffffff;
+  --surface: #f0f0f0;
+  --text: #111111;
+  --dim: #5a7a82;
+  --accent: #0e7490;      /* darkened cyan — glacial cyan is unreadable on white */
+  --error: #d32f2f;
+  --series1: #0e7490;
+  --series2: #b45309;
+  --grid: #d4d4d4;
+}
+
+* { box-sizing: border-box; border-radius: 0 !important; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+body { overflow-y: auto; }
+
+#app { min-height: 100%; }
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--dim);
+  cursor: pointer;
+}
+button:disabled { color: var(--dim); cursor: not-allowed; }
+button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); }
+
+input, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--dim);
+  outline: none;
+}
+input:focus, textarea:focus { border-color: var(--text); }
+
+/* ── layout ─────────────────────────────────────────────────────── */
+
+.mobile-layout { display: flex; flex-direction: column; min-height: 100%; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--grid);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 10;
+}
+.topbar .hamburger {
+  border: none;
+  font-size: 16px;
+  padding: 0 4px;
+  color: var(--text);
+  background: transparent;
+}
+.topbar .title { font-weight: bold; letter-spacing: 1px; }
+
+.drawer-overlay, .modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 50;
+  display: flex;
+}
+.drawer {
+  width: 240px;
+  background: var(--surface);
+  border-right: 1px solid var(--grid);
+  padding: 16px 0;
+  display: flex;
+  flex-direction: column;
+}
+.drawer .drawer-item {
+  display: block; width: 100%;
+  text-align: left;
+  padding: 10px 18px;
+  border: none;
+  background: transparent;
+}
+.drawer .drawer-item:hover { background: rgba(255, 255, 255, 0.06); }
+
+.panels { display: flex; flex-direction: column; gap: 16px; padding: 16px; }
+
+/* expanded (desktop, >840dp) — master-detail */
+.expanded-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  height: 100vh;
+}
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--grid);
+  display: flex;
+  flex-direction: column;
+  padding: 12px 0;
+}
+.sidebar nav { flex: 1; }
+.sidebar .nav-item {
+  display: block; width: 100%;
+  text-align: left;
+  padding: 10px 18px;
+  border: none;
+  background: transparent;
+}
+.sidebar .nav-item.selected {
+  background: var(--accent);
+  color: var(--bg);
+}
+.sidebar .sidebar-actions { display: flex; flex-direction: column; gap: 8px; padding: 12px 18px; }
+
+.detail { overflow-y: auto; padding: 20px; }
+.detail .panel { max-width: 980px; }
+
+/* ── panels ───────────────────────────────────────────────────── */
+
+.panel {
+  border: 1px solid var(--grid);
+  background: var(--surface);
+}
+.panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--grid);
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+.panel-header .count { color: var(--dim); font-weight: normal; }
+.panel-body { padding: 12px; }
+
+.empty-state { color: var(--dim); padding: 18px 4px; }
+
+/* chart */
+.chart-wrap { margin-bottom: 12px; }
+.chart-svg { width: 100%; height: 180px; display: block; }
+.range-selector { display: flex; gap: 6px; margin-bottom: 6px; }
+.range-selector button {
+  padding: 2px 10px;
+}
+.range-selector button.selected {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.chart-legend { display: flex; gap: 16px; margin-top: 6px; color: var(--dim); }
+.chart-legend .key { display: flex; align-items: center; gap: 6px; }
+.chart-legend .swatch { width: 10px; height: 10px; }
+.swatch.s1 { background: var(--series1); }
+.swatch.s2 { background: var(--series2); }
+
+/* table */
+.records-table { width: 100%; border-collapse: collapse; }
+.records-table th, .records-table td {
+  padding: 5px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--grid);
+}
+.records-table th { color: var(--dim); font-weight: normal; }
+.records-table td.del-col, .records-table th.del-col { width: 30px; }
+.records-table .del-btn { border: none; color: var(--dim); padding: 0 4px; }
+.records-table .del-btn:hover { color: var(--error); }
+
+.pager { display: flex; align-items: center; gap: 10px; padding-top: 10px; }
+.pager .page-label { color: var(--dim); }
+.pager button { padding: 2px 12px; }
+
+/* FAB (mobile) */
+.fab {
+  position: fixed;
+  right: 20px; bottom: 20px;
+  width: 56px; height: 56px;
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  font-size: 26px;
+  line-height: 1;
+  z-index: 20;
+}
+
+/* ── modal ────────────────────────────────────────────────────── */
+
+.modal-overlay { align-items: center; justify-content: center; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--grid);
+  width: min(440px, calc(100vw - 40px));
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  padding: 16px;
+}
+.modal h2 {
+  margin: 0 0 14px;
+  font-size: 14px;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--grid);
+  padding-bottom: 8px;
+}
+.modal .type-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.modal .type-tabs button {
+  padding: 4px 12px;
+}
+.modal .type-tabs button.selected {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.modal .field { margin-bottom: 12px; }
+.modal .field label { display: block; color: var(--dim); margin-bottom: 4px; }
+.modal .field input, .modal .field textarea {
+  width: 100%;
+  padding: 6px 8px;
+}
+.modal .field input.invalid { color: var(--error); border-color: var(--error); }
+.modal .error-msg { color: var(--error); margin-top: 4px; }
+
+.dial-row { display: flex; align-items: stretch; gap: 8px; }
+.dial-row .dial-btn { width: 44px; font-size: 18px; }
+.dial-row .dial-value {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--dim);
+  font-size: 20px;
+}
+.dial-row .dial-value.invalid { color: var(--error); border-color: var(--error); }
+
+.modal .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+.modal .actions button { padding: 6px 18px; }
+.modal .actions .save-btn {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.modal .actions .save-btn:disabled {
+  background: var(--surface);
+  color: var(--dim);
+  border-color: var(--dim);
+}
+
+/* ── snackbar ──────────────────────────────────────────────────── */
+
+.snackbar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--grid);
+  color: var(--text);
+  padding: 10px 18px;
+  z-index: 100;
+  white-space: nowrap;
+}
+
+/* ── update toast (PWA) ─────────────────────────────────────────── */
+
+.update-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--grid);
+  color: var(--text);
+  padding: 10px 18px;
+  z-index: 110; /* above snackbar */
+}
+.update-toast button {
+  padding: 4px 14px;
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+}
+
+/* ── responsive ───────────────────────────────────────────────── */
+
+@media (min-width: 841px) {
+  .mobile-only { display: none !important; }
+}
+@media (max-width: 840px) {
+  .desktop-only { display: none !important; }
+  .expanded-layout { display: none; }
+}
