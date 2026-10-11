@@ -138,13 +138,16 @@ invariants the v2 app must preserve exactly:
   `IMPORT OK — 3 added`; `IMPORT OK — 0 added, 3 duplicates`; the general form
   `IMPORT OK — N added[, N duplicates][, N invalid][ | table: reason]`.
 
-## 5. Persistence **[partly OPEN]**
+## 5. Persistence
 
-- 100% client-side. **[OPEN]** primary store on web-family targets: IndexedDB
-  (recommended) vs the legacy localStorage CSV mirror. Either way, one-time
-  auto-migration from the Kotlin app's storage is cheap: the legacy keys are
-  exactly `lymph.weight_records` / `lymph.period_records` / `lymph.bowel_records`,
-  each holding the §4-format CSV *including the header row*, so migration is
+- 100% client-side. Primary store on web-family targets: the **localStorage
+  CSV mirror (decided)** — one CSV per table under the legacy keys, so
+  existing browser data inherits itself with zero migration code. Either
+  way, one-time auto-migration from the Kotlin app's storage is trivial if
+  ever needed: the legacy keys are exactly
+  `lymph.weight_records` / `lymph.period_records` / `lymph.bowel_records`
+  (plus v2's `lymph.hydrate_records`), each holding the §4-format CSV
+  *including the header row*, so migration is
   "read key → run the existing CSV decoder → insert".
 - The store is an implementation detail; the CSV/ZIP contract (§4) is the
   durability guarantee. Records must survive page reload, app restart, and
@@ -254,35 +257,43 @@ colors are theme tokens, not constants.
 - Chart math is **pure, unit-tested code** in the core library, not entangled
   with rendering.
 
+## 8. UI contract (continued)
+
 **Input modal:** per-type controls — Weight: unit toggle + editable field +
-±0.1 dials (§3 semantics); Period: duration counter, flow intensity 1–4,
-symptoms text; Bowel: Bristol 1–7 counter, effort 1–5 counter, note. Timestamp
+±0.1 dials (§3 semantics); Period: days counter (1–14), flow selector
+1–4 presented as NONE/LIGHT/MEDIUM/HEAVY, symptoms text; Bowel: bristol-like
+1–5 selector (LIKE PEBBLES/HARD/PERFECT/MUSHY :(/WATER), effort 1–3 selector
+(LOW/MEDIUM/HIGH), note; Hydrate: unit toggle (L/OZ) + editable volume field
+with ±0.1 L / ±1 OZ dials (default 500 ml), note. Timestamp
 auto-`now()`. Defaults must be valid (modal opens savable).
 
 **Feedback:** snackbars, bottom-center, auto-dismiss ~4s, exact strings in §4.
 
-## 9. Toolchain direction (v2) — per user decisions
+## 9. Toolchain (v2) — as built
 
-- **Abandon Gradle and Kotlin entirely.** No dual-stack interim.
-- **Rust core library** — role confirmation pending **[OPEN]**, expected:
-  pure data/logic crate (entities, validation, CSV/ZIP encode/decode, chart
-  math, weight math, import semantics) compiled to WebAssembly and consumed by
-  the frontend. Mirrors the proven Rust-core/WASM + Deno-frontend pattern.
-- **Deno + TypeScript frontend** — framework choice pending **[OPEN]** (Preact
-  recommended over React; justification to be settled with the user).
-- Deno owns: dev server, bundling, `deno test` for TS units, task runner.
-  Cargo owns: core unit tests (`cargo test`). The core must compile to
-  wasm32 as a gate (the Kotlin-era `compileKotlinWasmJs` equivalent).
+- **Gradle and Kotlin abandoned entirely.** No dual-stack interim; the
+  Kotlin/Gradle tree was deleted Oct 2.
+- **Rust core library (decided)**: pure data/logic crate at
+  `core/crates/lymph-core` — entities, validation, CSV/ZIP encode/decode,
+  chart math, weight/volume math, import semantics — compiled to
+  WebAssembly (wasm-pack, `web` target) and consumed by the frontend.
+- **Deno + TypeScript frontend (decided)**: Preact + `@preact/signals`; a
+  typed wasm wrapper (`frontend/src/lymph-core.ts`) is the single cast site.
+- Deno owns: dev server, bundling (`deno bundle --platform=browser`), task
+  runner. Cargo owns: core unit tests (`cargo test`) and the
+  `wasm32-unknown-unknown` compile gate.
+- PWA: zero-dependency service worker + build-time BUILD_ID cache
+  revisioning (taskman-consistent; see AGENTS.md "PWA" section).
 
-**Proposed repository layout** (pending the two OPEN items above):
+**Repository layout (as built):**
 
 ```
 lymph/
 ├── core/        # Rust crate → WASM (no I/O, no browser APIs — pure logic)
-├── frontend/    # Deno + TypeScript app; builds static output
-├── e2e/         # CDP-driven browser suite (real DOM — no OCR)
-├── android/     # Bubblewrap-generated TWA project (when we ship)
-└── docs/        # SPEC.md (this file), DATA-EXCHANGE.md
+├── frontend/    # Deno + TypeScript app; builds static output (dist/)
+├── docs/        # SPEC.md (this file), DATA-EXCHANGE.md
+├── android/     # Bubblewrap-generated TWA project (NOT STARTED — M3)
+└── e2e/         # Persisted browser test suite (NOT STARTED — see §11 debt)
 ```
 
 **Testing consequences of the reboot:** the canvas-in-Shadow-DOM rendering that
@@ -299,16 +310,13 @@ already proven in this user's other projects. No OCR, ever again.
 - No ORM / codegen for storage; no second codebase for any platform.
 - No theming beyond dark/light. No rounded corners (not even small ones).
 - No Apple store work in this phase.
-- No feature additions during the reboot: v2 parity target is exactly the
-  behavior encoded in this spec (dashboard, charts, tables, entry modal,
-  export/import, persistence). New features come after.
 
-## 11. Open questions (blocking)
+## 11. Decisions (all resolved — recorded Sep 29, implemented since)
 
-1. Rust's exact role (pure WASM core vs also a Rust static server).
-2. Frontend framework (Preact / vanilla TS + signals / React — justification
-   owed for any framework).
-3. Primary web storage (IndexedDB recommended vs localStorage CSV mirror).
-4. Whether real user data exists in the Kotlin app that must survive the
-   cutover (drives whether auto-migration is P0).
-5. Git mechanics for the cutover (new branch + one-shot deletion recommended).
+1. **Rust's role**: pure WASM core library (no Rust server). ✓ shipped as `core/crates/lymph-core`.
+2. **Frontend**: Preact + signals, typed wasm wrapper, `deno bundle --platform=browser`. ✓ shipped.
+3. **Storage**: localStorage CSV mirror, same legacy keys — existing browser data inherits itself. ✓ shipped.
+4. **Cutover data**: user holds an export ZIP; import covers migration. Rebuild landed on `prototype` directly. ✓ done.
+5. **PWA**: shipped (manifest + zero-dep SW + build-time BUILD_ID cache revisioning + update toast), taskman-consistent; verified offline + update cycle in-browser.
+
+Post-parity additions (all shipped & verified): qualitative flow labels (NONE/LIGHT/MEDIUM/HEAVY), bowel scale redesign (bristol-like 1–5, effort 1–3 with labels), HYDRATE fourth measurement type (L/OZ, canonical ml, default 500 ml).

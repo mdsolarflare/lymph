@@ -52,7 +52,7 @@ lymph/
 ```bash
 # 1. Core: test + build the wasm artifact (only needed after Rust changes)
 cd core
-cargo test                                                    # 60/60 must pass
+cargo test                                                    # 72/72 must pass
 cargo clippy --all-targets                                    # must be clean
 wasm-pack build crates/lymph-core --target web --out-dir ../../pkg --release
 
@@ -79,15 +79,16 @@ The browser E2E flows above were verified live in session (real browser, DOM ass
 
 ## Data model & exchange format
 
-Three record types, never merged. Full frozen spec: [`docs/DATA-EXCHANGE.md`](docs/DATA-EXCHANGE.md); product contract: [`docs/SPEC.md`](docs/SPEC.md).
+Four record types, never merged. Full frozen spec: [`docs/DATA-EXCHANGE.md`](docs/DATA-EXCHANGE.md); product contract: [`docs/SPEC.md`](docs/SPEC.md).
 
 | Record | CSV entry | Header |
 |--------|-----------|--------|
 | Weight | `weight_records.csv` | `id,timestamp,weightKg,note` |
 | Period | `period_records.csv` | `id,timestamp,durationDays,flowIntensity,symptoms` |
 | Bowel | `bowel_records.csv` | `id,timestamp,bristolType,effortLevel,note` |
+| Hydrate | `hydrate_records.csv` | `id,timestamp,volumeMl,note` |
 
-Import is insert-only (existing UUIDs skipped, first occurrence wins); only structural archive failure aborts. Validation ranges are shared by UI and import (0.1–1000 kg; 1–14 days; flow 1–4; Bristol 1–7; effort 1–5) — one source of truth in the Rust core.
+Import is insert-only (existing UUIDs skipped, first occurrence wins); only structural archive failure aborts. Validation ranges are shared by UI and import (0.1–1000 kg; 1–14 days; flow 1–4; bristol-like 1–5; effort 1–3; 1–10000 ml) — one source of truth in the Rust core.
 
 ## Design language
 
