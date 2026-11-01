@@ -1,0 +1,89 @@
+# Simple workflow for deploying static content to GitHub Pages
+name: Deploy static content to Pages
+
+on:
+  # Runs on pushes targeting the default branch
+  push:
+    branches: ["main"]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # Single deploy job since we're just deploying
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # ─── Rust (core) ─────────────────────────────────────────────
+
+      # A pinned toolchain does NOT inherit the runner image's preinstalled
+      # wasm32 target — add it explicitly.
+      - name: Add wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Test Rust
+        run: cargo test --manifest-path core/Cargo.toml
+
+      - name: Lint Rust
+        run: cargo clippy --all-targets --manifest-path core/Cargo.toml
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.15.0
+
+      # --out-dir is RELATIVE TO THE CRATE: ../../pkg lands at core/pkg/
+      - name: Build WASM
+        run: wasm-pack build core/crates/lymph-core --target web --out-dir ../../pkg --release
+
+      # ─── TypeScript (frontend) ───────────────────────────────────
+
+      # The frontend bundles core/pkg/ — wasm-pack MUST run before the build.
+      - name: Setup Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
+        with:
+          deno-version: 2.9.7
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: deno install --frozen-lockfile
+
+      - name: Type check
+        working-directory: frontend
+        run: deno task check
+
+      - name: Build frontend
+        working-directory: frontend
+        run: deno task build
+
+      # ─── Pages ───────────────────────────────────────────────────
+
+      - name: Setup Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          # lymph's dist/ IS the deploy artifact root (index.html at its top
+          # level) — unlike taskman, which uploads frontend/public.
+          path: 'frontend/dist'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5

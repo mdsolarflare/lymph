@@ -1,0 +1,60 @@
+name: Run project build & tests
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # ─── Rust (core) ─────────────────────────────────────────────
+
+      # A pinned toolchain does NOT inherit the runner image's preinstalled
+      # wasm32 target — add it explicitly.
+      - name: Add wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Test Rust
+        run: cargo test --manifest-path core/Cargo.toml
+
+      - name: Lint Rust
+        run: cargo clippy --all-targets --manifest-path core/Cargo.toml
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.15.0
+
+      # --out-dir is RELATIVE TO THE CRATE: ../../pkg lands at core/pkg/
+      - name: Build WASM
+        run: wasm-pack build core/crates/lymph-core --target web --out-dir ../../pkg --release
+
+      # ─── TypeScript (frontend) ───────────────────────────────────
+
+      # The frontend bundles core/pkg/ — wasm-pack MUST run before the build.
+      - name: Setup Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
+        with:
+          deno-version: 2.9.7
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: deno install --frozen-lockfile
+
+      - name: Type check
+        working-directory: frontend
+        run: deno task check
+
+      - name: Build frontend
+        working-directory: frontend
+        run: deno task build
