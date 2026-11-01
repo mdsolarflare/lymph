@@ -69,6 +69,15 @@ Shortcut: `deno task dev` = build + serve.
 
 **Order matters:** after any Rust change, run `wasm-pack build` **before** `deno task build` — the frontend bundles `core/pkg/`, and a stale pkg produces silent runtime bugs.
 
+## Deployment
+
+Pushes to `main` build and deploy automatically to **https://heyy.foo/lymph/** (GitHub Pages, custom domain).
+
+- [`.github/workflows/test-build.yml`](.github/workflows/test-build.yml) — PR/push gate: core `cargo test` + `clippy` → wasm-pack 0.15.0 → Deno 2.9.7 `deno task check` + `deno task build`.
+- [`.github/workflows/static.yml`](.github/workflows/static.yml) — the same gate, then deploys `frontend/dist/` to Pages.
+
+CI enforces the wasm-pack-before-frontend ordering above; `rust-toolchain.toml` pins the toolchain (1.95.0) so CI builds match local ones.
+
 ## Testing
 
 - **Unit**: `cargo test` in `core/` — the data contract (CSV round-trips, ZIP corruption fuzz, insert-only import semantics, weight integer-hundredths math incl. exact lb↔kg factor and Kotlin-parity tie rounding, chart geometry) is fully unit-tested in Rust.
